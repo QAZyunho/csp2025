@@ -13,7 +13,7 @@ def load_keywords_from_csv(file_path):
             keywords = df.iloc[:, 0].tolist()
         else:
             # 여러 열이 있는 경우 첫 번째 열 사용
-            keywords = df[df.columns[0]].tolist()
+            keywords = df[df.columns[1]].tolist()
         
         # NaN 값 제거 및 문자열로 변환
         keywords = [str(keyword) for keyword in keywords if pd.notna(keyword)]
@@ -50,7 +50,7 @@ def get_news_for_keyword(keyword, api_key, language='ko'):
 def main():
     # 본인의 NewsAPI 키로 대체하세요
     api_key = "9a1225e79f9a47fcb59fccf946d9f992"
-    csv_file_path = "google_trends_20250516_162603.csv"
+    csv_file_path = "prioritized_keywords.csv"
     
     # CSV에서 키워드 로드
     keywords = load_keywords_from_csv(csv_file_path)
