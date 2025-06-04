@@ -218,7 +218,7 @@ def prioritize_keywords(df):
 
 def main():
     # CSV 파일 경로
-    csv_path = "google_trends_20250516_162603.csv"
+    csv_path = "/home/yunho/csp2025/trend-collector/google_trends_20250602_125922.csv"
     
     # 1. 필터링 및 클러스터링 수행
     filtered_df = filter_keywords_by_language(csv_path)

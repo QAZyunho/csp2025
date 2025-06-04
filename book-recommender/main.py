@@ -18,7 +18,7 @@ def direct_url_search(keyword=None):
             import urllib.parse
             encoded_keyword = urllib.parse.quote(keyword)
             url = f"https://www.nl.go.kr/NL/search/openApi/search.do?key=0dfddd5045ff123245cc00ab9034d122d6b6c1e6fba60c838f7304b8f98a69c1&apiType=xml&srchTarget=total&kwd={encoded_keyword}&pageSize=10&pageNum=1"
-
+    
         
         print(f"\n요청 URL: {url}")
         

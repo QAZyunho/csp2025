@@ -1,0 +1,189 @@
+{
+  "generated_at": "2025-06-02T12:51:56.494351",
+  "total_books": 19,
+  "unique_keywords": 7,
+  "recommendations": [
+    {
+      "title": "경기도 박물관 : 경기도의 옛 모습을 상상해 보아요",
+      "author": "글: 경기도박물관 ;그림: 정다이",
+      "publisher": "김영사",
+      "pub_year": "2008",
+      "call_no": "아373-7-23-24",
+      "type": "도서",
+      "isbn": "9788934924593 9788934930457",
+      "keyword": "경기도박물관",
+      "total_results": 875
+    },
+    {
+      "title": "경기도 박물관 : 경기도의 옛 모습을 상상해 보아요",
+      "author": "정다이 경기도박물관",
+      "publisher": "파주 : 김영사, 2008",
+      "pub_year": "2008",
+      "type": "도서",
+      "isbn": "9788934924593(세트)",
+      "keyword": "경기도박물관",
+      "total_results": 875
+    },
+    {
+      "title": "경기도박물관 명품선",
+      "author": "경기도박물관",
+      "publisher": "용인 : 경기도박물관, 200409",
+      "pub_year": "200409",
+      "type": "복합기록물",
+      "keyword": "경기도박물관",
+      "total_results": 875
+    },
+    {
+      "title": "최고 인기 선수로 거듭난 새로운 리더, 야닉 시너",
+      "publisher": "스포츠코리아",
+      "pub_year": "2024",
+      "call_no": "695.505-스243ㅌ",
+      "type": "기사",
+      "keyword": "야닉 시너",
+      "total_results": 1
+    },
+    {
+      "title": "파이널 데스티네이션",
+      "author": "directed by James Wong",
+      "publisher": "워너브러더스 엔터테인먼트 [공급] : 해리슨 앤 컴퍼니 [판매]",
+      "pub_year": "2011",
+      "call_no": "PE688.24-N12-42",
+      "type": "영상자료",
+      "keyword": "파이널 데스티네이션",
+      "total_results": 10
+    },
+    {
+      "title": "파이널 데스티네이션. 2",
+      "author": "directed by David R. Ellis",
+      "publisher": "워너브러더스 엔터테인먼트 [공급] : 해리슨 앤 컴퍼니 [판매]",
+      "pub_year": "2011",
+      "call_no": "PE688.24-N12-43-2",
+      "type": "영상자료",
+      "keyword": "파이널 데스티네이션",
+      "total_results": 10
+    },
+    {
+      "title": "파이널 데스티네이션 4",
+      "author": "David R. Ellis [감독]",
+      "publisher": "워너브러더스 엔터테인먼트 [공급] : 프리지엠 [판매]",
+      "pub_year": "2010",
+      "call_no": "PD688.25-3751",
+      "type": "영상자료",
+      "keyword": "파이널 데스티네이션",
+      "total_results": 10
+    },
+    {
+      "title": "오타니 쇼헤이",
+      "author": "author: Sunsoo editors,Sonn Yun,Han Seunghoon",
+      "publisher": "BS(브레인스토어)",
+      "pub_year": "2023",
+      "call_no": "695.7099-23-1",
+      "type": "도서",
+      "isbn": "9791169780087",
+      "keyword": "오타니 쇼헤이",
+      "total_results": 24
+    },
+    {
+      "title": "오타니 쇼헤이",
+      "author": "author: Sunsoo Editors,Sonn Yun,Han Seunghoon ;photo: Getty Images",
+      "publisher": "Brainstore(브레인스토어)",
+      "pub_year": "2024",
+      "call_no": "695.7099-24-3",
+      "type": "도서",
+      "isbn": "9791169780254",
+      "keyword": "오타니 쇼헤이",
+      "total_results": 24
+    },
+    {
+      "title": "who? 오타니 쇼헤이",
+      "author": "글: 스토리랩 ;그림: 리버앤드스타 스튜디오",
+      "publisher": "다산어린이 : 다산북스",
+      "pub_year": "2025",
+      "call_no": "아998.6-25-4",
+      "type": "도서",
+      "isbn": "9791130632650 9791130666006",
+      "keyword": "오타니 쇼헤이",
+      "total_results": 24
+    },
+    {
+      "title": "E-날씨유(you) : 대전지방기상청 웹진. Vol. 19. 봄호",
+      "author": "대전지방기상청 [편]",
+      "publisher": "대전 : 대전지방기상청, 20200529",
+      "pub_year": "20200529",
+      "type": "잡지/학술지",
+      "keyword": "대전 날씨",
+      "total_results": 46
+    },
+    {
+      "title": "E-날씨유(you) : 대전지방기상청 웹진. Vol. 18. 겨울호",
+      "author": "대전지방기상청 [편]",
+      "publisher": "대전 : 대전지방기상청, 20200227",
+      "pub_year": "20200227",
+      "type": "잡지/학술지",
+      "keyword": "대전 날씨",
+      "total_results": 46
+    },
+    {
+      "title": "E-날씨유(you) : 대전지방기상청 웹진. Vol. 16. 여름호",
+      "author": "대전지방기상청 [편]",
+      "publisher": "대전 : 대전지방기상청, 20190830",
+      "pub_year": "20190830",
+      "type": "잡지/학술지",
+      "keyword": "대전 날씨",
+      "total_results": 46
+    },
+    {
+      "title": "NBA 플레이오프 1-2라운드 : 디펜딩 챔피언이 떨어졌다. 남은 플레이오프에서 우리는 르브론도, AD도 볼 수 없다.",
+      "publisher": "페이퍼센트",
+      "pub_year": "2021",
+      "call_no": "695.105-더515",
+      "type": "기사",
+      "keyword": "nba 플레이오프",
+      "total_results": 10
+    },
+    {
+      "title": "NBA INSIDE : NBA 플레이오프 덮친 부상 악령, 슈퍼스타 대거 이탈",
+      "publisher": "J&J미디어",
+      "pub_year": "2023",
+      "call_no": "695.105-아392ㅈ",
+      "type": "기사",
+      "keyword": "nba 플레이오프",
+      "total_results": 10
+    },
+    {
+      "title": "WNBA 플레이오프 결산",
+      "publisher": "페이퍼센트",
+      "pub_year": "2019",
+      "call_no": "695.105-더515",
+      "type": "기사",
+      "keyword": "nba 플레이오프",
+      "total_results": 10
+    },
+    {
+      "title": "世宗大王 誕辰日 : 463週年을 記念하자",
+      "publisher": "馬山日報社",
+      "pub_year": "19590515",
+      "type": "신문",
+      "keyword": "세종대왕 탄신일",
+      "total_results": 8
+    },
+    {
+      "title": "社說, 세종대왕 탄신일과 기념사업회의 발족",
+      "publisher": "서울 : 平和新聞社, 19570515-",
+      "pub_year": "19570515",
+      "type": "신문",
+      "keyword": "세종대왕 탄신일",
+      "total_results": 8
+    },
+    {
+      "title": "(2019 세종탄신일) 한글이 스승이다 : 제 622돌 세종대왕 탄신일 기념 문화행사",
+      "author": "국립한글박물관 [편]",
+      "publisher": "국립한글박물관",
+      "pub_year": "2019",
+      "call_no": "LC711.2-N19-1",
+      "type": "영상자료",
+      "keyword": "세종대왕 탄신일",
+      "total_results": 8
+    }
+  ]
+}
