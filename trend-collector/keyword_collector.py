@@ -1,861 +1,445 @@
 import requests
-import xml.etree.ElementTree as ET
-import pandas as pd
-import logging
-import time
-import datetime
+import sys
 import os
+import re
+import pandas as pd
 import json
-import google.generativeai as genai
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from webdriver_manager.chrome import ChromeDriverManager
+from datetime import datetime
+import urllib.parse
+import argparse
 
-# 로깅 설정
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
-logger = logging.getLogger(__name__)
-
-class CompleteKeywordProcessor:
-    """키워드 수집 + Gemini 그룹핑을 통합한 완전한 처리기"""
-    
-    def __init__(self, gemini_api_key: str):
-        # 기본 설정
-        self.all_keywords = []
-        self.timestamp = datetime.datetime.now().strftime("%y%m%d")
-        self.temp_files = [] # 다운로드된 임시 파일들을 추적하여 삭제
-        
-        # Gemini 설정
-        genai.configure(api_key=gemini_api_key)
-        self.model = genai.GenerativeModel("gemini-1.5-flash")
-        
-    def run_complete_workflow(self, geo_codes=['KR'], headless=True, use_rss=True, use_auto_download=True):
-        """
-        전체 워크플로우 실행: 수집 → 그룹핑 → 저장
-        
-        Args:
-            geo_codes (list): 수집할 국가 코드 목록 (예: ['KR', 'US']).
-            headless (bool): Selenium 브라우저를 헤드리스 모드로 실행할지 여부.
-            use_rss (bool): RSS 피드를 통해 키워드를 수집할지 여부.
-            use_auto_download (bool): 자동 다운로드 방식을 통해 키워드를 수집할지 여부.
-        """
-        logger.info("🚀 완전한 키워드 처리 워크플로우 시작...")
-        
-        try:
-            # 1단계: 키워드 수집
-            logger.info("📡 1단계: 키워드 수집 중...")
-            raw_collected_keywords = self.collect_all_keywords(use_rss, use_auto_download, geo_codes, headless)
-            
-            if not raw_collected_keywords:
-                logger.error("키워드 수집 실패: 수집된 키워드가 없습니다.")
-                return None
-            
-            logger.info(f"수집 완료: {len(raw_collected_keywords)}개 키워드")
-            
-            # Gemini에 보낼 키워드 텍스트만 추출
-            keywords_for_gemini = [item['keyword'] for item in raw_collected_keywords]
-
-            # 2단계: Gemini로 그룹핑
-            logger.info("🤖 2단계: Gemini 그룹핑 중...")
-            grouped_keywords = self._group_with_gemini(keywords_for_gemini)
-            
-            if not grouped_keywords:
-                logger.error("그룹핑 실패: Gemini로부터 유효한 응답을 받지 못했습니다.")
-                return None
-            
-            logger.info(f"그룹핑 완료: {len(grouped_keywords)}개 키워드")
-            
-            # 3단계: 결과 저장 (키워드만)
-            logger.info("💾 3단계: 결과 저장 중...")
-            saved_file = self._save_results(grouped_keywords)
-            
-            # 4단계: 요약 출력
-            self._print_summary(grouped_keywords)
-            
-            return saved_file
-            
-        except Exception as e:
-            logger.exception(f"워크플로우 실행 중 오류: {e}")
-            return None
-        finally:
-            # 임시 파일 정리
-            self._cleanup_temp_files()
-
-    def collect_all_keywords(self, use_rss=True, use_auto_download=True, geo_codes=['KR'], headless=True):
-        """
-        모든 방법으로 키워드 수집을 총괄합니다.
-        
-        Args:
-            use_rss (bool): RSS 피드를 통해 키워드를 수집할지 여부.
-            use_auto_download (bool): 자동 다운로드 방식을 통해 키워드를 수집할지 여부.
-            geo_codes (list): 수집할 국가 코드 목록.
-            headless (bool): Selenium 브라우저를 헤드리스 모드로 실행할지 여부.
-            
-        Returns:
-            list: 수집된 모든 키워드 (딕셔너리 리스트).
-        """
-        all_collected = []
-        
-        # RSS 방법
-        if use_rss:
-            try:
-                rss_keywords = self.collect_from_rss(geo_codes)
-                all_collected.extend(rss_keywords)
-            except Exception as e:
-                logger.error(f"RSS 수집 중 오류: {str(e)}")
-        
-        # 자동 다운로드 방법
-        if use_auto_download:
-            try:
-                auto_keywords = self.collect_from_auto_download(headless)
-                all_collected.extend(auto_keywords)
-            except Exception as e:
-                logger.error(f"자동 다운로드 수집 중 오류: {str(e)}")
-        
-        # 중복 제거 (키워드 텍스트 기준)
-        unique_keywords = {}
-        for item in all_collected:
-            keyword_text = item['keyword'].strip().lower()
-            if keyword_text not in unique_keywords:
-                unique_keywords[keyword_text] = item
-            else:
-                # 더 높은 랭크 (낮은 숫자)를 가진 항목 유지
-                if item.get('rank', float('inf')) < unique_keywords[keyword_text].get('rank', float('inf')):
-                    unique_keywords[keyword_text] = item
-
-        self.all_keywords = list(unique_keywords.values())
-        logger.info(f"총 {len(self.all_keywords)}개의 고유 키워드 수집 완료 (중복 제거 후).")
-        return self.all_keywords
-
-    def collect_from_rss(self, geo_codes=['KR']):
-        """
-        RSS 피드를 통해 키워드 수집
-        
-        Args:
-            geo_codes (list): 수집할 국가 코드 목록.
-            
-        Returns:
-            list: 수집된 키워드 (딕셔너리 리스트).
-        """
-        logger.info(f"RSS를 통한 키워드 수집 시작 - 국가: {geo_codes}")
-        
-        rss_keywords = []
-        
-        for geo in geo_codes:
-            keywords = self._get_trends_from_rss(geo)
-            for keyword in keywords:
-                rss_keywords.append({
-                    'keyword': keyword['title'],
-                    'source': 'RSS',
-                    'rank': keyword['index'] + 1,
-                    'traffic': keyword.get('traffic', ''),
-                    'country': geo,
-                    'original_rank': keyword['index'] + 1  # 원본 순위 보존
-                })
-            time.sleep(1)  # API 호출 간격
-            
-        logger.info(f"RSS에서 {len(rss_keywords)}개 키워드 수집 완료")
-        return rss_keywords
-    
-    def collect_from_auto_download(self, headless=True):
-        """
-        자동 다운로드를 통해 키워드 수집
-        
-        Args:
-            headless (bool): Selenium 브라우저를 헤드리스 모드로 실행할지 여부.
-            
-        Returns:
-            list: 수집된 키워드 (딕셔너리 리스트).
-        """
-        logger.info("📥 Google Trends 자동 다운로드 방식 시작...")
-        
-        auto_keywords = []
-        driver = None
-        
-        try:
-            # 다운로드 폴더 설정
-            download_dir = os.path.join(os.path.expanduser("~"), "Downloads")
-            # 다운로드 디렉토리가 없으면 생성하거나 현재 디렉토리로 대체
-            if not os.path.exists(download_dir):
-                try:
-                    os.makedirs(download_dir)
-                    logger.info(f"다운로드 폴더 생성: {download_dir}")
-                except OSError:
-                    logger.warning(f"다운로드 폴더 '{download_dir}' 생성 실패. 현재 디렉토리로 대체합니다.")
-                    download_dir = os.getcwd() 
-            
-            logger.info(f"다운로드 폴더: {download_dir}")
-            
-            # 기존 파일 목록 확인 (다운로드 전)
-            before_files = set(os.listdir(download_dir))
-            
-            # Chrome 드라이버 초기화 (다운로드 설정 포함)
-            driver = self._initialize_download_driver(headless, download_dir)
-            
-            # Google Trends 페이지 로드
-            logger.info("🌐 Google Trends 페이지 로딩 중...")
-            driver.get("https://trends.google.com/trends/trendingsearches/daily?geo=KR&hl=ko")
-            
-            # 페이지 로딩 대기
-            self._wait_for_page_load(driver, timeout=30)
-            
-            # 쿠키 동의 처리
-            try:
-                # 동의 버튼 텍스트 패턴 확장
-                cookie_buttons = driver.find_elements(By.XPATH, "//button[contains(text(), '동의') or contains(text(), 'Agree') or contains(text(), 'Accept') or contains(text(), 'I agree')]")
-                if cookie_buttons:
-                    cookie_buttons[0].click()
-                    logger.info("쿠키 동의 완료")
-                    time.sleep(2) # 클릭 후 잠시 대기
-                else:
-                    logger.info("쿠키 동의 버튼을 찾을 수 없습니다 (없거나 이미 동의됨).")
-            except Exception as e:
-                logger.warning(f"쿠키 동의 처리 중 오류 (무시됨): {str(e)}")
-            
-            # 내보내기 버튼 찾기 및 클릭
-            success = self._click_export_button(driver)
-            if not success:
-                logger.error("내보내기 버튼을 찾을 수 없습니다. 자동 다운로드를 건너뜝니다.")
-                return auto_keywords
-            
-            time.sleep(2) # 메뉴가 나타날 때까지 잠시 대기
-            
-            # CSV 다운로드 버튼 클릭
-            success = self._click_csv_download(driver)
-            if not success:
-                logger.error("CSV 다운로드 버튼을 찾을 수 없습니다. 자동 다운로드를 건너뜝니다.")
-                return auto_keywords
-            
-            # 다운로드 완료 대기
-            logger.info("📥 파일 다운로드 대기 중...")
-            downloaded_file = self._wait_for_download(download_dir, before_files, timeout=30)
-            
-            if downloaded_file:
-                logger.info(f"✅ 다운로드 완료: {downloaded_file}")
-                # 임시 파일 목록에 추가
-                self.temp_files.append(downloaded_file)
-                
-                # 다운로드된 파일에서 키워드 추출
-                parsed_keywords = self._parse_csv_file(downloaded_file)
-                
-                # _parse_csv_file에서 반환된 키워드에 추가 정보 추가
-                rank_counter = 1
-                for kw_item in parsed_keywords:
-                    auto_keywords.append({
-                        'keyword': kw_item['keyword'],
-                        'source': 'Auto_Download',
-                        'rank': rank_counter,
-                        'traffic': '', # 자동 다운로드 CSV에는 트래픽 정보가 없음
-                        'country': 'KR', # 자동 다운로드는 현재 한국 페이지에서만 수행
-                        'original_rank': rank_counter
-                    })
-                    rank_counter += 1
-                
-            else:
-                logger.error("파일 다운로드에 실패했습니다.")
-                
-        except Exception as e:
-            logger.error(f"자동 다운로드 중 오류: {str(e)}")
-            
-        finally:
-            if driver:
-                driver.quit()
-                
-        logger.info(f"자동 다운로드에서 {len(auto_keywords)}개 키워드 수집 완료")
-        return auto_keywords
-
-    def _initialize_download_driver(self, headless=True, download_dir=None):
-        """
-        다운로드용 Chrome 드라이버 초기화
-        
-        Args:
-            headless (bool): 헤드리스 모드 여부.
-            download_dir (str): 다운로드 디렉토리 경로.
-            
-        Returns:
-            webdriver.Chrome: 초기화된 Chrome 웹 드라이버.
-        """
-        chrome_options = Options()
-        
-        if headless:
-            chrome_options.add_argument("--headless=new")
-            
-        chrome_options.add_argument("--window-size=1920,1080")
-        chrome_options.add_argument("--disable-gpu")
-        chrome_options.add_argument("--no-sandbox")
-        chrome_options.add_argument("--disable-dev-shm-usage")
-        chrome_options.add_argument("--lang=ko-KR") # 언어 설정
-        chrome_options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-        
-        # 다운로드 설정
-        prefs = {
-            "download.default_directory": download_dir,
-            "download.prompt_for_download": False,
-            "download.directory_upgrade": True,
-            "safeBrowse.enabled": True, # 안전 브라우징 기능 활성화 (보안 강화)
-            "profile.default_content_settings.popups": 0, # 팝업 차단
-            "profile.default_content_setting_values.automatic_downloads": 1, # 자동 다운로드 허용
+class BookRecommender:
+    def __init__(self, api_key="0dfddd5045ff123245cc00ab9034d122d6b6c1e6fba60c838f7304b8f98a69c1"):
+        self.api_key = api_key
+        self.base_url = "https://www.nl.go.kr/NL/search/openApi/search.do"
+        self.headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
         }
-        chrome_options.add_experimental_option("prefs", prefs)
         
-        service = Service(ChromeDriverManager().install())
-        driver = webdriver.Chrome(service=service, options=chrome_options)
-        driver.implicitly_wait(10) # 암시적 대기 시간 설정
-        return driver
-
-    def _wait_for_page_load(self, driver, timeout=30):
-        """
-        페이지 로딩 완료 대기 및 스크롤 동작.
+    def load_prioritized_keywords(self, csv_path=None, max_keywords=10):
+        """우선순위가 높은 키워드들을 CSV에서 로드 (book_keywords 컬럼 우선 사용)"""
+        if not csv_path:
+            print("❌ 키워드 CSV 파일 경로가 제공되지 않았습니다.")
+            return []
         
-        Args:
-            driver (webdriver.Chrome): Selenium 웹 드라이버.
-            timeout (int): 대기 시간 (초).
-            
-        Returns:
-            bool: 페이지 로딩 성공 여부.
-        """
         try:
-            WebDriverWait(driver, timeout).until(
-                lambda d: d.execute_script('return document.readyState') == 'complete'
-            )
-            time.sleep(3) # 페이지 컨텐츠가 완전히 렌더링될 시간 추가 대기
-            # 페이지 스크롤하여 동적 콘텐츠 로드 유도
-            driver.execute_script("window.scrollTo(0, document.body.scrollHeight / 2);")
-            time.sleep(2)
-            driver.execute_script("window.scrollTo(0, 0);")
-            logger.info("페이지가 완전히 로드되었습니다.")
-            return True
-        except Exception as e:
-            logger.warning(f"페이지 로드 대기 중 오류: {str(e)}")
-            return False
-
-    def _click_export_button(self, driver):
-        """
-        Google Trends 페이지에서 '내보내기' 또는 'Export' 버튼을 찾아 클릭합니다.
-        
-        Args:
-            driver (webdriver.Chrome): Selenium 웹 드라이버.
+            df = pd.read_csv(csv_path)
+            keyword_pairs = []  # (original_keyword, search_keyword) 쌍으로 저장
             
-        Returns:
-            bool: 버튼 클릭 성공 여부.
-        """
-        try:
-            logger.info("🔍 내보내기 버튼 검색 중...")
-            
-            # JavaScript로 버튼 찾기 (가장 유연한 방법)
-            export_found = driver.execute_script("""
-                var buttons = document.querySelectorAll('button, div[role="button"], span, a');
-                var exportButton = Array.from(buttons).find(b => {
-                    var text = b.textContent.trim();
-                    return text.includes('내보내기') || 
-                           text.includes('Export') ||
-                           text.includes('다운로드') || 
-                           text.includes('Download') ||
-                           (b.getAttribute('aria-label') && (b.getAttribute('aria-label').includes('내보내기') || b.getAttribute('aria-label').includes('Export')));
-                });
-                if (exportButton) {
-                    console.log('내보내기 버튼 찾음 (JS): ' + exportButton.textContent);
-                    exportButton.click();
-                    return true;
-                }
-                return false;
-            """)
-            
-            if export_found:
-                logger.info("✅ 내보내기 버튼 클릭 성공 (JavaScript)")
-                return True
-            
-            # XPath로 시도 (JavaScript 실패 시 대체)
-            export_xpath_patterns = [
-                "//button[contains(normalize-space(), '내보내기')]",
-                "//button[contains(normalize-space(), 'Export')]", 
-                "//div[contains(@role, 'button')][contains(normalize-space(), '내보내기')]",
-                "//div[contains(@role, 'button')][contains(normalize-space(), 'Export')]",
-                "//button[contains(normalize-space(), '다운로드')]",
-                "//button[contains(normalize-space(), 'Download')]",
-                "//*[contains(@aria-label, '내보내기')]", # aria-label 속성도 확인
-                "//*[contains(@aria-label, 'Export')]"
-            ]
-            
-            for xpath in export_xpath_patterns:
-                try:
-                    buttons = driver.find_elements(By.XPATH, xpath)
-                    if buttons:
-                        # 첫 번째 유효한 버튼 클릭
-                        for button in buttons:
-                            if button.is_displayed() and button.is_enabled():
-                                logger.info(f"XPath로 내보내기 버튼 찾음 및 클릭: {button.text}")
-                                button.click()
-                                return True
-                except Exception:
-                    # 특정 XPath 패턴에서 오류 발생해도 계속 시도
-                    pass
+            # book_keywords 컬럼이 있는지 확인하고 우선 사용
+            if 'book_keywords' in df.columns:
+                print("📚 book_keywords 컬럼을 발견했습니다. 도서 검색 최적화 키워드를 사용합니다.")
+                
+                for i, row in df.head(max_keywords).iterrows():
+                    # 원래 키워드 추출 (저장용)
+                    original_keyword = None
+                    if 'keyword' in df.columns:
+                        original_keyword = row.get('keyword', '')
+                    elif len(df.columns) >= 2:
+                        original_keyword = row.iloc[1] if i < len(df) else ''
+                    else:
+                        original_keyword = row.iloc[0] if i < len(df) else ''
                     
-            logger.warning("모든 방법을 시도했지만 내보내기 버튼을 찾을 수 없습니다.")
-            return False
+                    # 검색용 키워드 추출
+                    book_keywords_str = row.get('book_keywords', '')
+                    if pd.notna(book_keywords_str) and book_keywords_str.strip():
+                        # 문자열을 리스트로 변환 (eval 사용 - 안전성을 위해 try-except 사용)
+                        try:
+                            if book_keywords_str.startswith('[') and book_keywords_str.endswith(']'):
+                                # 리스트 형태의 문자열인 경우
+                                keywords_list = eval(book_keywords_str)
+                                if isinstance(keywords_list, list):
+                                    # 각 키워드를 개별적으로 추가 (최대 3개까지)
+                                    for keyword in keywords_list[:3]:
+                                        if isinstance(keyword, str) and keyword.strip():
+                                            keyword_pairs.append((str(original_keyword).strip(), keyword.strip()))
+                            else:
+                                # 단일 문자열인 경우
+                                keyword_pairs.append((str(original_keyword).strip(), book_keywords_str.strip()))
+                        except:
+                            # eval 실패 시 문자열 그대로 사용
+                            print(f"⚠️ book_keywords 파싱 실패, 원본 사용: {book_keywords_str}")
+                            keyword_pairs.append((str(original_keyword).strip(), book_keywords_str.strip()))
+                
+                if keyword_pairs:
+                    print(f"✅ book_keywords에서 {len(keyword_pairs)}개의 키워드 쌍을 로드했습니다.")
+                    return keyword_pairs[:max_keywords * 3]  # 더 많은 키워드 허용
             
+            # book_keywords가 없거나 비어있는 경우 기존 방식 사용
+            print("📖 일반 키워드 컬럼을 사용합니다.")
+            
+            # CSV 구조에 따라 키워드 컬럼 찾기
+            if 'keyword' in df.columns:
+                keywords = df.head(max_keywords)['keyword'].tolist()
+            elif len(df.columns) >= 2:
+                # rank, keyword 순서로 되어있는 경우
+                keywords = df.head(max_keywords).iloc[:, 1].tolist()
+            else:
+                # 첫 번째 컬럼이 키워드인 경우
+                keywords = df.head(max_keywords).iloc[:, 0].tolist()
+                
+            # NaN 값 제거 및 문자열 변환
+            keywords = [str(kw).strip() for kw in keywords if pd.notna(kw) and str(kw).strip()]
+            
+            # 일반 키워드의 경우 (original, search) 쌍을 동일하게 설정
+            keyword_pairs = [(kw, kw) for kw in keywords]
+            
+            print(f"✅ {len(keyword_pairs)}개의 우선순위 키워드를 로드했습니다.")
+            return keyword_pairs
+            
+        except FileNotFoundError:
+            print(f"❌ 파일을 찾을 수 없습니다: {csv_path}")
+            return []
         except Exception as e:
-            logger.error(f"내보내기 버튼 클릭 중 오류: {str(e)}")
-            return False
-
-    def _click_csv_download(self, driver):
-        """
-        드롭다운 메뉴에서 CSV 다운로드 버튼을 찾아 클릭합니다.
+            print(f"❌ 키워드 로드 중 오류: {str(e)}")
+            return []
+    
+    def filter_by_material_type(self, books):
+        """원하는 자료유형으로 필터링 (도서, 기사, 신문, 멀티미디어만)"""
+        # 원하는 자료유형만 필터링
+        desired_types = ['도서', '기사', '신문', '멀티미디어', '단행본', '연속간행물']
+        filtered_books = []
         
-        Args:
-            driver (webdriver.Chrome): Selenium 웹 드라이버.
+        for book in books:
+            book_type = book.get('type', '').lower()
+            # 원하는 자료유형이거나 자료유형 정보가 없는 경우 포함
+            if not book_type or any(dtype.lower() in book_type for dtype in desired_types):
+                filtered_books.append(book)
+        
+        return filtered_books
+    
+    def remove_duplicates(self, books):
+        """중복 도서 제거 (제목과 저자 기준)"""
+        seen = set()
+        unique_books = []
+        
+        for book in books:
+            title = book.get('title', '').strip()
+            author = book.get('author', '').strip()
             
-        Returns:
-            bool: CSV 다운로드 버튼 클릭 성공 여부.
-        """
+            # 제목과 저자의 조합으로 중복 체크
+            key = (title.lower(), author.lower())
+            
+            if key not in seen and title:  # 제목이 있고 중복이 아닌 경우
+                seen.add(key)
+                unique_books.append(book)
+        
+        return unique_books
+    
+    def search_books_by_keyword(self, original_keyword, search_keyword, max_results=5):
+        """특정 키워드로 도서 검색 (검색용 키워드 사용, 원래 키워드로 저장)"""
         try:
-            logger.info("📄 CSV 다운로드 옵션 검색 중...")
+            # URL 인코딩
+            encoded_keyword = urllib.parse.quote(search_keyword)
             
-            # JavaScript로 CSV 다운로드 버튼 찾기 (가장 유연한 방법)
-            csv_found = driver.execute_script("""
-                var items = document.querySelectorAll('li, div[role="menuitem"], span, a');
-                var csvItem = Array.from(items).find(item => {
-                    var text = item.textContent.toLowerCase().trim();
-                    return text.includes('csv') || 
-                           text.includes('다운로드') ||
-                           text.includes('download') ||
-                           (item.getAttribute('aria-label') && (item.getAttribute('aria-label').toLowerCase().includes('csv') || item.getAttribute('aria-label').toLowerCase().includes('다운로드')));
-                });
-                if (csvItem) {
-                    console.log('CSV 다운로드 옵션 찾음 (JS): ' + csvItem.textContent);
-                    csvItem.click();
-                    return true;
-                }
-                return false;
-            """)
+            # 대량 검색 (발행년도 내림차순)
+            url = (f"{self.base_url}?key={self.api_key}&apiType=xml"
+                  f"&srchTarget=total&kwd={encoded_keyword}"
+                  f"&pageSize={max_results * 4}&pageNum=1&sort=ipub_year,order=desc")
             
-            if csv_found:
-                logger.info("✅ CSV 다운로드 버튼 클릭 성공 (JavaScript)")
-                return True
+            print(f"🔍 '{search_keyword}' 검색 중... (원래 키워드: '{original_keyword}')")
             
-            # XPath로 시도 (JavaScript 실패 시 대체)
-            csv_xpath_patterns = [
-                "//li[contains(normalize-space(), 'CSV')]",
-                "//li[contains(normalize-space(), 'csv')]",
-                "//div[contains(@role, 'menuitem')][contains(normalize-space(), 'CSV')]",
-                "//a[contains(normalize-space(), 'CSV')]",
-                "//*[contains(text(), 'CSV')]",
-                "//*[contains(text(), '다운로드')]",
-                "//*[contains(@aria-label, 'CSV 다운로드')]"
-            ]
+            # API 요청
+            response = requests.get(url, headers=self.headers, timeout=30)
+            response.encoding = 'utf-8'
             
-            for xpath in csv_xpath_patterns:
-                try:
-                    items = driver.find_elements(By.XPATH, xpath)
-                    if items:
-                        for item in items:
-                            if item.is_displayed() and item.is_enabled():
-                                logger.info(f"XPath로 CSV 다운로드 옵션 찾음 및 클릭: {item.text}")
-                                item.click()
-                                return True
-                except Exception:
-                    # 특정 XPath 패턴에서 오류 발생해도 계속 시도
-                    pass
+            if response.status_code == 200:
+                books = self.parse_search_results(response.text, original_keyword, search_keyword)
+                
+                # 원하는 자료유형만 필터링
+                filtered_books = self.filter_by_material_type(books)
+                
+                # 중복 제거
+                unique_books = self.remove_duplicates(filtered_books)
+                
+                # 결과 제한
+                final_books = unique_books[:max_results]
+                
+                if final_books:
+                    print(f"📚 '{search_keyword}': {len(final_books)}개 자료 발견")
+                    print(f"    (전체 {len(books)}개 → 필터링 {len(filtered_books)}개 → 중복제거 {len(unique_books)}개)")
+                else:
+                    print(f"📭 '{search_keyword}': 관련 자료 없음")
                     
-            logger.warning("모든 방법을 시도했지만 CSV 다운로드 옵션을 찾을 수 없습니다.")
-            return False
-            
+                return final_books
+            else:
+                print(f"❌ '{search_keyword}' 검색 실패: HTTP {response.status_code}")
+                return []
+                
         except Exception as e:
-            logger.error(f"CSV 다운로드 버튼 클릭 중 오류: {str(e)}")
-            return False
-
-    def _wait_for_download(self, download_dir, before_files, timeout=30):
-        """
-        지정된 디렉토리에서 새 파일 (특히 CSV)이 다운로드 완료될 때까지 대기합니다.
-        
-        Args:
-            download_dir (str): 다운로드 디렉토리 경로.
-            before_files (set): 다운로드 시작 전 디렉토리 내 파일 집합.
-            timeout (int): 대기 시간 (초).
-            
-        Returns:
-            str or None: 다운로드된 파일의 전체 경로 또는 다운로드 실패 시 None.
-        """
-        start_time = time.time()
-        
-        while time.time() - start_time < timeout:
-            try:
-                current_files = set(os.listdir(download_dir))
-                new_files = current_files - before_files
-                
-                # .crdownload (Chrome 임시), .tmp (일반 임시) 파일 제외
-                completed_files = [f for f in new_files if not f.endswith(('.crdownload', '.tmp'))]
-                
-                if completed_files:
-                    # CSV 파일 우선 검색
-                    csv_files = [f for f in completed_files if f.endswith('.csv')]
-                    if csv_files:
-                        # 최신 파일을 선택하거나 가장 큰 파일을 선택
-                        latest_csv = max(csv_files, key=lambda f: os.path.getmtime(os.path.join(download_dir, f)))
-                        downloaded_file_path = os.path.join(download_dir, latest_csv)
-                        
-                        # 파일이 완전히 다운로드되었는지 확인 (크기가 0이 아닌지)
-                        if os.path.exists(downloaded_file_path) and os.path.getsize(downloaded_file_path) > 0:
-                            logger.info(f"새로운 CSV 파일 감지 및 다운로드 완료 확인: {downloaded_file_path}")
-                            return downloaded_file_path
-                    
-                    # CSV가 없는 경우, 다른 유형의 완료된 파일이라도 반환 (덜 선호됨)
-                    for filename in completed_files:
-                        file_path = os.path.join(download_dir, filename)
-                        if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
-                            logger.warning(f"CSV가 아닌 다른 파일 다운로드 완료: {file_path}")
-                            return file_path
-                
-                time.sleep(1) # 1초 간격으로 확인
-                
-            except Exception as e:
-                logger.debug(f"다운로드 대기 중 오류 (파일 시스템 접근 등): {str(e)}")
-                time.sleep(1)
-        
-        logger.error(f"{timeout}초 내에 파일 다운로드가 완료되지 않았습니다.")
-        return None
-
-    def _parse_csv_file(self, csv_file_path):
-        """
-        다운로드된 CSV 파일에서 키워드를 추출합니다.
-        
-        Args:
-            csv_file_path (str): CSV 파일의 전체 경로.
-            
-        Returns:
-            list: 추출된 키워드 (각각 'keyword' 키를 가진 딕셔너리).
-        """
-        keywords = []
+            print(f"❌ '{search_keyword}' 검색 중 오류: {str(e)}")
+            return []
+    
+    def parse_search_results(self, xml_text, original_keyword, search_keyword):
+        """XML 검색 결과를 파싱하여 도서 정보 추출"""
+        books = []
         
         try:
-            # CSV 파일 읽기 (다양한 인코딩 시도)
-            csv_data = None
-            for encoding in ['utf-8-sig', 'utf-8', 'cp949', 'latin-1']:
-                try:
-                    with open(csv_file_path, 'r', encoding=encoding) as f:
-                        csv_data = f.read()
+            # 총 검색 결과 수 추출
+            total_match = re.search(r'<total>(\d+)</total>', xml_text)
+            total_count = int(total_match.group(1)) if total_match else 0
+            
+            # 각 도서 항목 추출 (더 많이 파싱)
+            item_pattern = r'<item>(.*?)</item>'
+            for i, item_match in enumerate(re.finditer(item_pattern, xml_text, re.DOTALL), 1):
+                if i > 30:  # 최대 30개까지 파싱 (중복 제거 후에도 충분한 결과 확보)
                     break
-                except UnicodeDecodeError:
-                    logger.debug(f"'{encoding}' 인코딩 실패: {csv_file_path}")
-                    continue
-            
-            if not csv_data:
-                logger.error(f"CSV 파일을 읽을 수 없습니다: {csv_file_path}")
-                return keywords
-            
-            # CSV 데이터 파싱
-            lines = csv_data.strip().split('\n')
-            logger.info(f"CSV 파일 '{os.path.basename(csv_file_path)}'에서 {len(lines)}줄 발견")
-            
-            # 헤더를 건너뛸지 결정
-            skip_header = False
-            if lines:
-                header_patterns = ['검색어', 'keyword', 'term', '순위', 'rank', '키워드', 'title']
-                # 첫 줄의 첫 번째 컬럼이 헤더 패턴 중 하나를 포함하는지 확인
-                first_col = lines[0].strip().split(',')[0].strip('"').lower()
-                if any(pattern in first_col for pattern in header_patterns):
-                    skip_header = True
-                    logger.info(f"헤더 발견, 건너뛰기: {lines[0].strip()}")
-            
-            start_index = 1 if skip_header else 0
-            
-            for i, line in enumerate(lines[start_index:]):
-                # 빈 줄 건너뛰기
-                if not line.strip():
-                    continue
-                
-                # 키워드 추출 로직 개선 (쉼표로 분리된 경우 첫 번째 컬럼, 아니면 전체)
-                line_clean = line.strip().strip('﻿"') # BOM 및 외부 따옴표 제거
-                
-                keyword = ''
-                if ',' in line_clean:
-                    # CSV 표준에 따라 따옴표로 감싸진 필드 처리
-                    import csv
-                    reader = csv.reader([line_clean])
-                    try:
-                        fields = next(reader)
-                        if fields:
-                            keyword = fields[0].strip()
-                    except csv.Error as e:
-                        logger.warning(f"CSV 파싱 오류 발생: {e} - 줄: {line_clean}")
-                        keyword = line_clean.split(',')[0].strip().strip('"') # 오류 발생 시 쉼표로 강제 분리
-                else:
-                    keyword = line_clean.strip().strip('"')
-                
-                # 유효한 키워드인지 확인
-                if keyword and not keyword.isdigit() and len(keyword) > 1:
-                    keywords.append({'keyword': keyword}) # 일단 키워드 텍스트만 추출
-            
-            logger.info(f"CSV에서 {len(keywords)}개 키워드 추출 완료")
-            
-        except Exception as e:
-            logger.error(f"CSV 파일 처리 중 오류: {str(e)}")
-            
-        return keywords
-
-    def _get_trends_from_rss(self, geo='KR'):
-        """
-        Google Trends RSS 피드에서 트렌드 가져오기
-        
-        Args:
-            geo (str): 국가 코드 (예: 'KR').
-            
-        Returns:
-            list: RSS 피드에서 파싱된 트렌드 항목 리스트.
-        """
-        url = f"https://trends.google.co.kr/trending/rss?geo={geo}"
-        
-        try:
-            response = requests.get(url, timeout=10) # 타임아웃 설정
-            response.raise_for_status() # HTTP 오류 발생 시 예외 발생
-            
-            try:
-                root = ET.fromstring(response.content)
-            except ET.ParseError as e:
-                logger.error(f"{geo} - XML 파싱 오류: {e}. 내용을 디버깅 목적으로 출력합니다.")
-                # 유효하지 않은 XML 문자를 처리하고 다시 파싱 시도
-                content = response.content.decode('utf-8', errors='ignore')
-                # 추가로 XML 선언 부분 등을 정리할 수도 있음
-                # content = re.sub(r'<\?xml[^>]*\?>', '', content)
-                root = ET.fromstring(content.encode('utf-8'))
-            
-            trends = []
-            channel = root.find('channel')
-            if channel is None:
-                logger.error(f"{geo} - RSS 피드에서 'channel' 요소를 찾을 수 없습니다. 피드 형식이 변경되었을 수 있습니다.")
-                return []
-                
-            items = channel.findall('item')
-            logger.debug(f"{geo} - 총 {len(items)}개의 RSS 항목을 찾았습니다.")
-            
-            for idx, item in enumerate(items):
-                try:
-                    title_elem = item.find('title')
-                    title = title_elem.text.strip() if title_elem is not None and title_elem.text else 'No Title'
                     
-                    # 트래픽 정보 찾기 (RSS에서 제공하는 추가 정보 - 네임스페이스 포함)
-                    traffic = None
-                    # 구글 트렌드 RSS는 'ht:approxTraffic' 형태의 네임스페이스를 사용함
-                    # {http://purl.org/rss/1.0/modules/traffic/}approxTraffic
-                    for elem in item:
-                        if 'approxTraffic' in elem.tag: # 간단하게 태그 이름만으로 찾기
-                            traffic = elem.text.strip()
-                            break
-                        # 완전한 네임스페이스를 사용한 접근 (더 정확)
-                        # if '}' in elem.tag and elem.tag.split('}')[1] == 'approxTraffic':
-                        #     traffic = elem.text.strip()
-                        #     break
-                    
-                    trends.append({
-                        'index': idx,
-                        'title': title,
-                        'traffic': traffic if traffic else '' # None 대신 빈 문자열
-                    })
-                except Exception as e:
-                    logger.error(f"{geo} - RSS 항목 {idx} 처리 중 오류: {e}. 항목 건너뜀.")
-            
-            return trends
-        
-        except requests.exceptions.RequestException as e:
-            logger.error(f"{geo} - RSS 요청 오류: {e}")
-            return []
-        except Exception as e:
-            logger.error(f"{geo} - RSS 전체 처리 중 알 수 없는 오류: {e}")
-            return []
-
-    def _group_with_gemini(self, keywords):
-        """
-        Gemini 모델을 사용하여 키워드들을 그룹핑하고 점수를 매깁니다.
-        
-        Args:
-            keywords (list): Gemini로 그룹핑할 원본 키워드 텍스트 리스트.
-            
-        Returns:
-            list: 그룹핑되고 점수가 매겨진 키워드 딕셔너리 리스트.
-        """
-        if not keywords:
-            logger.warning("Gemini 그룹핑을 위한 키워드가 없습니다.")
-            return []
-            
-        # 프롬프트에 포함될 키워드 목록 포맷팅
-        keywords_text = "\n".join([f"{i+1}. {kw}" for i, kw in enumerate(keywords)])
-        
-        prompt = f"""다음 한국 트렌드 키워드들을 분석해서 처리해주세요.
-
-키워드 목록:
-{keywords_text}
-
-처리 요구사항:
-1. 유사하거나 의미상 같은 키워드들을 하나의 **대표 키워드**로 그룹으로 묶기 (예: tesla+테슬라, nintendo+닌텐도 등).
-2. 날짜 관련 키워드는 한국의 **기념일** 또는 주요 **이벤트 명칭**으로 변환 (예: 6월6일→현충일, 10월3일→개천절, 8월15일→광복절, 밸런타인데이, 어린이날, 추석 등).
-3. 한국 트렌드이므로, **한국어가 아닌 키워드는 제외** (단, 'Tesla', 'Nintendo', 'Apple', 'iPhone', 'Netflix', 'YouTube', 'BTS', 'Blackpink' 등과 같이 한국에서도 널리 사용되는 **유명 브랜드, 제품, 인물, 그룹 이름**은 포함).
-4. 최종적으로 **최대 50개 키워드**만 선별하세요.
-
-출력 형식 (키워드만 간단히, JSON):
-```json
-{{
-  "keywords": [
-    "현충일",
-    "닌텐도 스위치", 
-    "테슬라",
-    "새로운 드라마",
-    "손흥민"
-  ]
-}}
-```"""
-
-        try:
-            logger.info("Gemini 모델에 요청 전송 중...")
-            response = self.model.generate_content(prompt)
-            result_text = response.text.strip()
-            logger.debug(f"Gemini 원본 응답:\n{result_text}")
-            
-            # JSON 코드 블록에서 JSON 문자열 추출
-            json_start_tag = "```json"
-            json_end_tag = "```"
-            
-            json_start = result_text.find(json_start_tag)
-            if json_start != -1:
-                json_start += len(json_start_tag)
-                json_end = result_text.find(json_end_tag, json_start)
-                if json_end != -1:
-                    json_string = result_text[json_start:json_end].strip()
-                else:
-                    logger.error("JSON 끝 태그를 찾을 수 없습니다.")
-                    return []
-            else:
-                # ```json``` 블록이 없는 경우 전체를 JSON으로 시도
-                json_string = result_text
-            
-            parsed_result = json.loads(json_string)
-            
-            if "keywords" in parsed_result:
-                # 키워드 리스트를 딕셔너리 형태로 변환 (기존 코드와 호환성 유지)
-                keyword_list = []
-                for i, keyword in enumerate(parsed_result["keywords"]):
-                    keyword_list.append({
-                        "rank": i + 1,
-                        "keyword": keyword
-                    })
-                return keyword_list
-            else:
-                logger.error("Gemini 응답 JSON에 'keywords' 키가 없습니다. 응답 형식 확인 필요.")
-                return []
+                item_text = item_match.group(1)
+                book = self.extract_book_info(item_text)
                 
-        except json.JSONDecodeError as e:
-            logger.error(f"Gemini 응답 JSON 파싱 실패: {e}. 원본 응답: {json_string}")
-            return []
+                if book and book.get('title'):  # 제목이 있는 경우만 추가
+                    book['keyword'] = original_keyword  # 원래 키워드로 저장
+                    book['search_keyword'] = search_keyword  # 검색용 키워드도 별도 저장
+                    book['total_results'] = total_count
+                    
+                    # 최신 자료 우선 - 발행년도가 있는 경우 우선순위 부여
+                    pub_year = book.get('pub_year')
+                    if pub_year and pub_year.isdigit():
+                        book['pub_year_int'] = int(pub_year)
+                    else:
+                        book['pub_year_int'] = 0  # 발행년도 없는 경우 낮은 우선순위
+                    
+                    books.append(book)
+                    
         except Exception as e:
-            logger.error(f"Gemini 그룹핑 중 알 수 없는 오류: {e}")
-            return []
+            print(f"XML 파싱 오류: {str(e)}")
+        
+        # 발행년도 내림차순으로 정렬 (최신 자료 우선)
+        books.sort(key=lambda x: x.get('pub_year_int', 0), reverse=True)
+        
+        return books
+    
+    def extract_book_info(self, item_text):
+        """개별 도서 항목에서 정보 추출"""
+        book = {}
+        
+        # 정보 추출 패턴들 (도서관 정보 추가)
+        patterns = {
+            'title': r'<title_info>\s*(?:<!\[CDATA\[(.*?)\]\]>|(.*?))\s*</title_info>',
+            'author': r'<author_info>\s*(?:<!\[CDATA\[(.*?)\]\]>|(.*?))\s*</author_info>',
+            'publisher': r'<pub_info>\s*(?:<!\[CDATA\[(.*?)\]\]>|(.*?))\s*</pub_info>',
+            'pub_year': r'<pub_year_info>(\d+)</pub_year_info>',
+            'call_no': r'<call_no>\s*(?:<!\[CDATA\[(.*?)\]\]>|(.*?))\s*</call_no>',
+            'type': r'<type_name>([^<]+)</type_name>',
+            'isbn': r'<isbn>\s*(?:<!\[CDATA\[(.*?)\]\]>|(.*?))\s*</isbn>',
+            # 도서관 정보 추가
+            'library_location': r'<place_info>\s*(?:<!\[CDATA\[(.*?)\]\]>|(.*?))\s*</place_info>',
+            'library_name': r'<manage_name>\s*(?:<!\[CDATA\[(.*?)\]\]>|(.*?))\s*</manage_name>'
+        }
+        
+        for field, pattern in patterns.items():
+            match = re.search(pattern, item_text, re.DOTALL)
+            if match:
+                # CDATA 또는 일반 텍스트 추출
+                value = match.group(1) or match.group(2) if len(match.groups()) >= 2 else match.group(1)
+                if value:
+                    book[field] = value.strip()
+        
+        return book
+    
+    def process_all_keywords(self, keyword_pairs, max_books_per_keyword=3):
+        """모든 키워드에 대해 도서 검색 수행"""
+        all_recommendations = []
+        
+        print(f"\n🚀 {len(keyword_pairs)}개 키워드로 도서 검색을 시작합니다...\n")
+        
+        for i, (original_keyword, search_keyword) in enumerate(keyword_pairs, 1):
+            print(f"[{i}/{len(keyword_pairs)}] ", end="")
+            books = self.search_books_by_keyword(original_keyword, search_keyword, max_books_per_keyword)
+            
+            if books:
+                all_recommendations.extend(books)
+            else:
+                print(f"⚠️  '{search_keyword}': 관련 도서를 찾지 못했습니다.")
+            
+            # API 호출 간격 조절 (너무 빠른 요청 방지)
+            if i < len(keyword_pairs):
+                import time
+                time.sleep(0.5)
+        
+        return all_recommendations
+    
+    def save_recommendations(self, recommendations, output_dir=".", base_filename="book_recommendations"):
+        """추천 도서 목록을 파일로 저장"""
+        json_output_file = os.path.join(output_dir, f"{base_filename}.json")
+        csv_output_file = os.path.join(output_dir, f"{base_filename}.csv")
 
-    def _save_results(self, grouped_keywords):
-        """
-        그룹핑된 키워드 결과를 CSV 파일로 저장합니다. (키워드만)
-        
-        Args:
-            grouped_keywords (list): 그룹핑된 키워드 (딕셔너리 리스트).
-            
-        Returns:
-            str or None: 저장된 파일의 전체 경로 또는 저장 실패 시 None.
-        """
-        if not grouped_keywords:
-            logger.warning("저장할 그룹핑된 키워드가 없습니다.")
-            return None
-            
-        filename = f"keywords_final_{self.timestamp}.csv"
-        
         try:
-            # 키워드만 추출하여 간단한 CSV로 저장
-            keywords_only = [item.get('keyword', '') for item in grouped_keywords if item.get('keyword')]
+            # 결과 요약 정보 추가 (JSON)
+            summary = {
+                "generated_at": datetime.now().isoformat(),
+                "total_books": len(recommendations),
+                "unique_keywords": len(set(book['keyword'] for book in recommendations)),
+                "recommendations": recommendations
+            }
             
-            # DataFrame을 사용하여 CSV로 저장 (키워드만)
-            df = pd.DataFrame({'keyword': keywords_only})
-            df.to_csv(filename, index=False, encoding='utf-8-sig')
+            with open(json_output_file, 'w', encoding='utf-8') as f:
+                json.dump(summary, f, ensure_ascii=False, indent=2)
             
-            logger.info(f"결과 저장 성공: {filename} ({len(keywords_only)}개 키워드)")
-            return filename
+            print(f"💾 추천 도서 목록이 '{json_output_file}'에 저장되었습니다.")
+            
+            # CSV 저장 (도서관 정보 포함)
+            if recommendations:
+                df = pd.DataFrame(recommendations)
+                columns_to_keep = [
+                    'keyword', 'title', 'author', 'publisher', 'pub_year', 
+                    'type', 'call_no', 'isbn', 'library_location', 'library_name', 'search_category'
+                ]
+                existing_columns = [col for col in columns_to_keep if col in df.columns]
+                df_filtered = df[existing_columns]
+                
+                # 컬럼명을 한국어로 변경 (가독성 향상)
+                column_mapping = {
+                    'keyword': '검색키워드',
+                    'title': '도서명',
+                    'author': '저자',
+                    'publisher': '출판사',
+                    'pub_year': '발행년도',
+                    'type': '자료유형',
+                    'call_no': '청구기호',
+                    'isbn': 'ISBN',
+                    'library_location': '소장도서관위치',
+                    'library_name': '소장도서관명',
+                    'search_category': '검색카테고리'  # 새로 추가
+                }
+                
+                df_filtered = df_filtered.rename(columns=column_mapping)
+                df_filtered.to_csv(csv_output_file, index=False, encoding='utf-8-sig')
+                print(f"📋 CSV 보고서가 '{csv_output_file}'에 저장되었습니다.")
+            else:
+                print("CSV 보고서를 생성할 데이터가 없습니다.")
+            
+            return True
+            
         except Exception as e:
-            logger.error(f"결과 CSV 저장 중 오류: {e}")
-            return None
-        
-    def _print_summary(self, grouped_keywords):
-        """
-        그룹핑된 키워드 결과에 대한 요약을 콘솔에 출력합니다.
-        
-        Args:
-            grouped_keywords (list): 그룹핑된 키워드 (딕셔너리 리스트).
-        """
-        if not grouped_keywords:
-            print("그룹핑된 키워드가 없습니다.")
+            print(f"❌ 파일 저장 오류: {str(e)}")
+            return False
+    
+    def print_summary(self, recommendations):
+        """검색 결과 요약 출력"""
+        if not recommendations:
+            print("📭 추천할 도서가 없습니다.")
             return
         
-        print("\n" + "="*70)
-        print(f"🤖 완전한 키워드 처리 결과 ({len(grouped_keywords)}개)")
-        print("="*70)
+        print(f"\n📊 === 검색 결과 요약 ===")
+        print(f"총 추천 도서: {len(recommendations)}권")
         
-        print(f"📊 최종 그룹핑 키워드: {len(grouped_keywords)}개")
-        print(f"\n🏆 전체 키워드 목록:")
+        # 키워드별 통계
+        keyword_stats = {}
+        for book in recommendations:
+            keyword = book['keyword']
+            keyword_stats[keyword] = keyword_stats.get(keyword, 0) + 1
         
-        for i, item in enumerate(grouped_keywords, 1):
-            keyword = item.get('keyword', '')
-            print(f"  {i:2d}. {keyword}")
+        # 카테고리별 통계 (자료유형별)
+        type_stats = {}
+        for book in recommendations:
+            book_type = book.get('type', '기타')
+            type_stats[book_type] = type_stats.get(book_type, 0) + 1
         
-        print("\n💡 처리 과정:")
-        print("  1️⃣ RSS 피드 및 Google Trends 자동 다운로드로 최신 키워드 수집")
-        print("  2️⃣ Gemini AI를 활용하여 유사 키워드 그룹핑, 날짜 기념일 변환, 불필요 키워드 필터링")
-        print("  3️⃣ 최종 키워드만 선별하여 CSV 파일로 저장")
-        print("  4️⃣ 뉴스 수집기에서 바로 사용 가능한 형태로 출력")
+        print(f"자료 유형: {len(type_stats)}개")
         
-        print("="*70)
-
-    def _cleanup_temp_files(self):
-        """임시 다운로드 파일 정리"""
-        logger.info(f"임시 파일 {len(self.temp_files)}개 정리 시작.")
-        for temp_file in self.temp_files:
-            try:
-                if os.path.exists(temp_file):
-                    os.remove(temp_file)
-                    logger.info(f"임시 파일 삭제: {temp_file}")
-            except Exception as e:
-                logger.warning(f"임시 파일 '{temp_file}' 삭제 실패: {e}")
-        self.temp_files = [] # 정리 후 목록 초기화
-
+        # 도서관별 통계
+        library_stats = {}
+        for book in recommendations:
+            library = book.get('library_name', '정보없음')
+            library_stats[library] = library_stats.get(library, 0) + 1
+        
+        print(f"소장 도서관: {len(library_stats)}개")
+        
+        print(f"\n📚 키워드별 추천 자료 수:")
+        for keyword, count in sorted(keyword_stats.items(), key=lambda x: x[1], reverse=True):
+            print(f"  • {keyword}: {count}개")
+        
+        print(f"\n📂 자료유형별 추천 자료 수:")
+        for book_type, count in sorted(type_stats.items(), key=lambda x: x[1], reverse=True):
+            print(f"  • {book_type}: {count}개")
+        
+        print(f"\n🏛️ 도서관별 소장 도서 수 (상위 5개):")
+        for library, count in sorted(library_stats.items(), key=lambda x: x[1], reverse=True)[:5]:
+            print(f"  • {library}: {count}권")
+        
+        # 상위 추천 자료 미리보기 (발행년도순 정렬)
+        print(f"\n🔥 주요 추천 자료 (최신순 상위 5개):")
+        
+        # 발행년도 기준으로 정렬
+        sorted_recommendations = sorted(recommendations, 
+                                      key=lambda x: x.get('pub_year_int', 0), 
+                                      reverse=True)
+        
+        for i, book in enumerate(sorted_recommendations[:5], 1):
+            title = book.get('title', '제목 없음')
+            author = book.get('author', '저자 미상')
+            keyword = book.get('keyword', '')
+            search_keyword = book.get('search_keyword', '')
+            book_type = book.get('type', '자료유형 미상')
+            pub_year = book.get('pub_year', '발행년도 미상')
+            library_name = book.get('library_name', '도서관 정보없음')
+            library_location = book.get('library_location', '')
+            
+            print(f"  {i}. [{keyword}] {title} ({pub_year})")
+            print(f"    저자: {author} | 자료유형: {book_type}")
+            print(f"    검색키워드: {search_keyword}")
+            print(f"    소장: {library_name} {f'({library_location})' if library_location else ''}")"    소장: {library_name} {f'({library_location})' if library_location else ''}")
 
 def main():
     """메인 실행 함수"""
-    print("🚀 완전한 키워드 수집 + 그룹핑 시스템 시작")
-    print("="*60)
+    parser = argparse.ArgumentParser(description="우선순위 키워드 기반 도서 추천 시스템")
+    parser.add_argument("--input_file", "-i", required=True, help="뉴스 요약 CSV 파일 (book_keywords 컬럼 포함)")
+    parser.add_argument("--max_keywords", "-m", type=int, default=15, 
+                        help="처리할 최대 키워드 수 (기본값: 15)")
+    parser.add_argument("--max_books_per_keyword", type=int, default=2,
+                        help="각 키워드당 검색할 최대 도서 수 (기본값: 2)")
     
-    # 실제 API 키를 여기에 입력하거나 환경 변수에서 로드하세요.
-    # 예: os.environ.get("GEMINI_API_KEY")
-    api_key = "AIzaSyD1hxIJlbglSksUxRyLZkMZHrWyqFEwpEs" # <<=== 여기에 실제 Gemini API 키를 넣어주세요.
-    
-    if api_key == "YOUR_GEMINI_API_KEY":
-        logger.error("Gemini API 키가 설정되지 않았습니다. 'YOUR_GEMINI_API_KEY'를 실제 키로 교체해주세요.")
-        return
-        
-    try:
-        # 처리기 초기화
-        processor = CompleteKeywordProcessor(api_key)
-        
-        # 전체 워크플로우 실행
-        # geo_codes는 여러 국가를 지정할 수 있으나, 현재 자동 다운로드는 KR에 고정되어 있음.
-        # headless=True: 브라우저 UI 없이 백그라운드에서 실행
-        result_file = processor.run_complete_workflow(geo_codes=['KR'], headless=True, use_rss=True, use_auto_download=True)
-        
-        if result_file:
-            print(f"\n✅ 완료! 최종 결과: {result_file}")
-            print("📄 이 파일을 뉴스 수집기 또는 다른 분석에 사용하세요.")
-        else:
-            print("\n❌ 처리 실패: 최종 결과 파일이 생성되지 않았습니다.")
-        
-    except Exception as e:
-        logger.exception(f"메인 실행 중 예측할 수 없는 오류: {e}")
-        print("\n❌ 시스템 오류가 발생했습니다. 로그를 확인해주세요.")
+    args = parser.parse_args()
 
+    print("📖 우선순위 키워드 기반 도서 추천 시스템")
+    print("=" * 50)
+    print("💡 book_keywords 컬럼을 우선적으로 사용하여 도서를 검색합니다.")
+    
+    # Book Recommender 초기화
+    recommender = BookRecommender()
+    
+    # 우선순위 키워드 로드 (book_keywords 우선)
+    keyword_pairs = recommender.load_prioritized_keywords(args.input_file, args.max_keywords)
+    
+    if not keyword_pairs:
+        print("❌ 처리할 키워드가 없습니다. 프로그램을 종료합니다.")
+        return
+    
+    print(f"🎯 처리할 키워드 ({len(keyword_pairs)}개):")
+    for i, (original, search) in enumerate(keyword_pairs[:5]):
+        print(f"   {i+1}. {original} → {search}")
+    if len(keyword_pairs) > 5:
+        print(f"   ... 외 {len(keyword_pairs) - 5}개")
+    
+    # 모든 키워드에 대해 도서 검색
+    recommendations = recommender.process_all_keywords(keyword_pairs, args.max_books_per_keyword)
+    
+    # 결과 요약 출력
+    recommender.print_summary(recommendations)
+    
+    if recommendations:
+        # 출력 파일 경로 설정
+        output_dir = os.path.dirname(args.input_file) if args.input_file else "."
+        
+        # 결과 저장 (JSON, CSV)
+        recommender.save_recommendations(recommendations, output_dir)
+        
+        print(f"\n✅ 총 {len(recommendations)}개의 자료를 추천했습니다!")
+        print(f"📁 결과 파일은 '{output_dir}' 디렉토리에 저장되었습니다.")
+        print(f"   • book_recommendations.json (상세 정보)")
+        print(f"   • book_recommendations.csv (표 형태 - 원본키워드와 검색키워드 분리)")
+    else:
+        print("❌ 추천할 자료를 찾지 못했습니다.")
+        print("💡 다른 키워드를 시도해보거나 검색 조건을 완화해보세요.")
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("\n\n⏹️  프로그램이 사용자에 의해 중단되었습니다.")
+        sys.exit(0)
+    except Exception as e:
+        print(f"\n❌ 프로그램 실행 중 오류가 발생했습니다: {str(e)}")
+        sys.exit(1)
