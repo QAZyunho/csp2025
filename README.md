@@ -1,11 +1,25 @@
 <<<<<<< HEAD
 # csp2025
 =======
-# C&S Project 2025 - Team xxx
+# C&S Project 2025 - Team Q
 
-This repository is a collection of prerequisites and guidance for team project activities.
+### 트렌드 기반 도서 추천 서비스
+일간 검색량을 기반으로 식별한 사회적으로 인기있는 주제(트렌드 토픽)를 빠르게 요약하여 해당 주제가 왜 주목받고 있는지를 분석하고, 해당 주제와 관련된 온/오프라인 자료를 연결하는 서비스입니다.
 
-The contents of this `README.md` are always available on GitHub and can be edited.
+## 프로젝트 개요
+### 목적 (Why?)
+도서관을 단순히 서적을 읽고 공부하는 공간이 아니라 인기 있는 주제에 대해 깊이 있는 지식을 탐색할 수 있는 공간으로 만드는 것을 목표로 합니다.
+
+### 방법 (How?)
+* Google Trends, 뉴스 기사, 커뮤니티 게시글에서 트렌드 주제 데이터 수집
+* 언어 모델(Gemini)을 활용하여 각 주제별로 간결한 요약 생성
+* 국립중앙도서관 Open API를 통해 관련 도서 및 문헌 자료 매칭
+* 사용자 맞춤형 추천 시스템 제공
+
+### 대상 사용자
+* 트렌드 및 관련 자료 탐색을 원하는 도서관 방문자
+* 전자도서관 이용자
+* 최신 주제에 관심있는 연구자 및 학습자
 
 ## Directory Structure
 
@@ -13,11 +27,25 @@ The directory structure below must be followed, and must be periodically updated
 
 ```
 /
-    /docs/
-    /Dockerfile  # or, /Containerfile
-    /README.md
-    /Usage.md
-    /...  # your own source codes
+├── docs/                    # 프로젝트 문서 및 발표자료
+├── trend-collector/        # 트렌드 데이터 수집
+│   ├── keyword_collector.py
+│   ├── naver_news_collector.py
+│   └── requirements.txt
+├── trend-analyzer/         # 트렌드 분석 및 요약
+│   ├── trend_analyzer.py
+│   └── requirements.txt
+├── library-searcher/       # 도서관 자료 검색
+│   ├── search_book.py
+│   └── requirements.txt
+├── recommendation-system/  # 개인화 추천 시스템
+│   ├── api_server.py
+│   ├── recommender.py
+│   ├── test_category.py
+│   └── requirements.txt
+├── Dockerfile
+├── README.md
+└── Usage.md
 ```
 
 ## Guidelines
