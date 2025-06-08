@@ -380,7 +380,7 @@ class BookRecommender:
             print(f"  {i}. [{keyword}] {title} ({pub_year})")
             print(f"    저자: {author} | 자료유형: {book_type}")
             print(f"    검색키워드: {search_keyword}")
-            print(f"    소장: {library_name} {f'({library_location})' if library_location else ''}")"    소장: {library_name} {f'({library_location})' if library_location else ''}")
+            print(f"    소장: {library_name} {f'({library_location})' if library_location else ''}")
 
 def main():
     """메인 실행 함수"""
