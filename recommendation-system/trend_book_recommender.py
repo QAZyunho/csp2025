@@ -228,55 +228,48 @@ class TrendBookRecommender:
         
         return similarity_scores
 
-    def get_user_specific_recommendations(self, user_id: str, books_df: pd.DataFrame, top_k: int = 10) -> List[Dict]:
-        """사용자별 맞춤 추천 생성"""
+    def get_user_specific_recommendations(self, user_id: str, books_df: pd.DataFrame, top_k: int = 10, filter_by_keywords: bool = True) -> List[Dict]:
+        """사용자별 맞춤 추천 생성 - 선호 키워드 기반 필터링 추가"""
         try:
-            # 사용자별 유사도 계산
+            # 사용자 프로필 불러오기
+            user_profile = self.user_profiles.get(user_id, {})
+            preferred_keywords = user_profile.get('preferred_keywords', [])
+            preferred_types = user_profile.get('preferred_types', ['도서'])
+            
+            # ✅ 선호 키워드로 도서 필터링
+            if filter_by_keywords and preferred_keywords:
+                books_df = books_df[books_df['keyword'].isin(preferred_keywords)]
+
+            if books_df.empty:
+                logger.warning(f"사용자 {user_id}의 선호 키워드에 해당하는 도서가 없습니다")
+                return []
+
+            # 유사도 계산
             user_similarity = self.calculate_user_book_similarity(user_id, books_df)
-            
-            # 사용자 피드백 반영
+
+            # 사용자 피드백
             user_ratings = self.load_user_ratings(user_id)
-            
-            # 피드백이 있는 도서들에 대한 보정
             if not user_ratings.empty:
                 for _, rating_row in user_ratings.iterrows():
                     book_id = rating_row['book_id']
                     rating = rating_row['rating']
-                    
                     book_indices = books_df[books_df['doc_id'] == book_id].index
-                    
                     if len(book_indices) > 0:
                         book_idx = book_indices[0]
-                        
-                        if rating >= 4:  # 긍정적 피드백
+                        if rating >= 4:
                             user_similarity[book_idx] *= 1.3
-                            
-                            # 유사한 키워드의 다른 도서들에도 보너스
-                            book_keyword = books_df.iloc[book_idx]['keyword']
-                            same_keyword_indices = books_df[books_df['keyword'] == book_keyword].index
-                            for idx in same_keyword_indices:
-                                if idx != book_idx:
-                                    user_similarity[idx] *= 1.1
-                                    
-                        elif rating <= 2:  # 부정적 피드백
+                        elif rating <= 2:
                             user_similarity[book_idx] *= 0.3
-                            
-                            book_keyword = books_df.iloc[book_idx]['keyword']
-                            same_keyword_indices = books_df[books_df['keyword'] == book_keyword].index
-                            for idx in same_keyword_indices:
-                                if idx != book_idx:
-                                    user_similarity[idx] *= 0.9
-            
+
             # 트렌드 점수와 결합
             trend_scores = self.get_trend_based_scores(books_df)
-            
             recommendations = []
+
             for idx, book in books_df.iterrows():
-                # 하이브리드 점수 계산 (개인화 70%, 트렌드 30%)
                 personal_score = user_similarity[idx]
                 trend_score = trend_scores.get(idx, 0)
                 final_score = 0.7 * personal_score + 0.3 * trend_score
-                
+
                 recommendations.append({
                     'doc_id': book['doc_id'],
                     'title': book['title'],
@@ -293,11 +286,10 @@ class TrendBookRecommender:
                     'trend_score': trend_score,
                     'recommendation_reason': self.generate_personalized_reason(book, user_id, personal_score, trend_score)
                 })
-            
-            # 점수 순으로 정렬하여 상위 k개 반환
+
             recommendations.sort(key=lambda x: x['score'], reverse=True)
             return recommendations[:top_k]
-            
+        
         except Exception as e:
             logger.error(f"❌ 사용자별 추천 실패: {str(e)}")
             return []
