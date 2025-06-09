@@ -1,0 +1,42 @@
+# Recommendation API Service - 추천 API 서비스
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# 시스템 의존성 설치
+RUN apt-get update && apt-get install -y \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Python 의존성 파일 복사 및 설치
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# 추가 의존성 (recommendation-api 전용)
+RUN pip install --no-cache-dir \
+    Flask==2.3.3 \
+    Flask-CORS==4.0.0 \
+    firebase-admin>=6.9.0 \
+    pandas==2.0.3 \
+    numpy==1.24.3
+
+# 소스 코드 복사
+COPY recommendation-system/ ./recommendation-system/
+
+# 환경변수 설정
+ENV PYTHONPATH=/app
+ENV PYTHONUNBUFFERED=1
+ENV FLASK_APP=recommendation-system/api_server.py
+ENV FIREBASE_CONFIG_PATH=/app/firebase-config.json
+
+# Firebase 파일은 볼륨 마운트로 제공됨
+
+# 포트 노출
+EXPOSE 5001
+
+# 헬스체크 추가
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:5001/ || exit 1
+
+# 실행 명령
+CMD ["python", "recommendation-system/api_server.py"]

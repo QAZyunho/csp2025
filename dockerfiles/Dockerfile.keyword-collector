@@ -1,0 +1,37 @@
+# Keyword Collector Service - 키워드 수집만
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Chrome + ChromeDriver 설치 (Selenium용)
+RUN apt-get update && apt-get install -y \
+    wget \
+    curl \
+    unzip \
+    gnupg \
+    && wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | apt-key add - \
+    && echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list \
+    && apt-get update \
+    && apt-get install -y google-chrome-stable \
+    && rm -rf /var/lib/apt/lists/*
+
+# Python 의존성 설치
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# 추가 의존성
+RUN pip install --no-cache-dir \
+    selenium>=4.0.0 \
+    webdriver-manager>=3.8.0 \
+    google-generativeai>=0.8.0 \
+    firebase-admin>=6.9.0
+
+# 소스 코드 복사
+COPY trend-collector/ ./trend-collector/
+
+# 환경변수 설정
+ENV PYTHONPATH=/app
+ENV PYTHONUNBUFFERED=1
+
+# 키워드 수집만 실행
+CMD ["python", "trend-collector/keyword_collector.py"]

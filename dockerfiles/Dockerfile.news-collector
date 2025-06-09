@@ -1,0 +1,28 @@
+# News Collector Service - 뉴스 수집만
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# 시스템 의존성 (Chrome 불필요)
+RUN apt-get update && apt-get install -y \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Python 의존성 설치
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# 추가 의존성
+RUN pip install --no-cache-dir \
+    firebase-admin>=6.9.0 \
+    requests>=2.31.0
+
+# 소스 코드 복사
+COPY trend-collector/ ./trend-collector/
+
+# 환경변수 설정
+ENV PYTHONPATH=/app
+ENV PYTHONUNBUFFERED=1
+
+# 뉴스 수집만 실행
+CMD ["python", "trend-collector/naver_news_collector.py"]

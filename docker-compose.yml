@@ -1,0 +1,14 @@
+
+services:
+  # 추천 API 서버만
+  recommendation-api:
+    build:
+      context: .
+      dockerfile: dockerfiles/Dockerfile.recommendation-api
+    environment:
+      - FIREBASE_CONFIG_PATH=/app/csproject2025-cfcb7-firebase-adminsdk-fbsvc-6764c4a1fb.json
+    volumes:
+      - ./csproject2025-cfcb7-firebase-adminsdk-fbsvc-6764c4a1fb.json:/app/csproject2025-cfcb7-firebase-adminsdk-fbsvc-6764c4a1fb.json:ro
+    ports:
+      - "5001:5001"
+    restart: unless-stopped
