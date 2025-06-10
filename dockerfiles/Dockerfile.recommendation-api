@@ -22,12 +22,13 @@ RUN pip install --no-cache-dir \
 
 # 소스 코드 복사
 COPY recommendation-system/ ./recommendation-system/
+COPY csproject2025-cfcb7-firebase-adminsdk-fbsvc-6764c4a1fb.json /app/csproject2025-cfcb7-firebase-adminsdk-fbsvc-6764c4a1fb.json
 
 # 환경변수 설정
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
 ENV FLASK_APP=recommendation-system/api_server.py
-ENV FIREBASE_CONFIG_PATH=/app/firebase-config.json
+# ENV FIREBASE_CONFIG_PATH=/app/csproject2025-cfcb7-firebase-adminsdk-fbsvc-6764c4a1fb.json
 
 # Firebase 파일은 볼륨 마운트로 제공됨
 

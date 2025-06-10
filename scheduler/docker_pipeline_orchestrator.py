@@ -35,7 +35,7 @@ class DockerPipelineOrchestrator:
         self.network_name = "cs-project-network"
         
         # 환경변수 로드
-        self.firebase_config_path = os.getenv('FIREBASE_CONFIG_PATH', '/app/firebase-config.json')
+        self.firebase_config_path = os.getenv('FIREBASE_CONFIG_PATH', '/app/csproject2025-cfcb7-firebase-adminsdk-fbsvc-6764c4a1fb.json')
         self.gemini_api_key = os.getenv('GEMINI_API_KEY')
         self.naver_client_id = os.getenv('NAVER_CLIENT_ID')
         self.naver_client_secret = os.getenv('NAVER_CLIENT_SECRET')
@@ -136,10 +136,22 @@ class DockerPipelineOrchestrator:
         return True
     
     def run_docker_step(self, step_name: str, image_name: str, command: list = None, 
-                       volumes: dict = None, environment: dict = None, 
-                       timeout: int = 1800) -> bool:
+                   volumes: dict = None, environment: dict = None, 
+                   timeout: int = 1800) -> bool:
         """Docker 컨테이너로 파이프라인 단계 실행"""
         logger.info(f"🐳 {step_name} 시작...")
+        
+        # 컨테이너 이름을 영문으로 변환
+        container_name_map = {
+            '1단계: 트렌드 키워드 수집': 'pipeline-keyword-collector',
+            '2단계: 네이버 뉴스 수집': 'pipeline-news-collector', 
+            '3단계: Gemini 트렌드 분석': 'pipeline-trend-analyzer',
+            '4단계: 도서 검색 및 추천': 'pipeline-library-searcher'
+        }
+        
+        # 컨테이너 이름 생성 (안전한 이름으로 변환)
+        safe_step_name = container_name_map.get(step_name, 'pipeline-unknown')
+        container_name = f"{safe_step_name}-{self.date_str}"
         
         # 기본 환경변수 설정
         base_env = {
@@ -150,17 +162,15 @@ class DockerPipelineOrchestrator:
             base_env.update(environment)
         
         # 기본 볼륨 설정 
-        base_volumes = {
-            self.firebase_config_path: '/app/firebase-config.json:ro'
-        }
+        base_volumes = {}
         if volumes:
             base_volumes.update(volumes)
-        
+            
         # Docker run 명령 구성
         docker_cmd = [
             'docker', 'run', '--rm',
             '--network', self.network_name,
-            '--name', f"pipeline-{step_name.lower().replace(' ', '-')}-{self.date_str}"
+            '--name', container_name
         ]
         
         # 환경변수 추가
@@ -221,7 +231,6 @@ class DockerPipelineOrchestrator:
             
             # 시간 초과된 컨테이너 정리
             try:
-                container_name = f"pipeline-{step_name.lower().replace(' ', '-')}-{self.date_str}"
                 subprocess.run(['docker', 'kill', container_name], check=False)
             except:
                 pass
@@ -230,7 +239,7 @@ class DockerPipelineOrchestrator:
         except Exception as e:
             logger.error(f"❌ {step_name} 실행 중 오류: {str(e)}")
             return False
-    
+        
     def run_pipeline(self) -> bool:
         """Docker 컨테이너 기반 전체 파이프라인 실행"""
         logger.info("🚀 Docker 컨테이너 기반 파이프라인 시작")
@@ -244,7 +253,7 @@ class DockerPipelineOrchestrator:
                 'command': [
                     'python', 'trend-collector/keyword_collector.py',
                     '--gemini_api_key', self.gemini_api_key,
-                    '--firebase_config', '/app/firebase-config.json'
+                    '--firebase_config', '/app/csproject2025-cfcb7-firebase-adminsdk-fbsvc-6764c4a1fb.json'
                 ],
                 'timeout': 1800  # 30분
             },
@@ -253,7 +262,7 @@ class DockerPipelineOrchestrator:
                 'image': f"{self.base_tag}-news-collector",
                 'command': [
                     'python', 'trend-collector/naver_news_collector.py',
-                    '--firebase_config', '/app/firebase-config.json',
+                    '--firebase_config', '/app/csproject2025-cfcb7-firebase-adminsdk-fbsvc-6764c4a1fb.json',
                     '--max_articles', '5'
                 ],
                 'environment': {
@@ -268,7 +277,7 @@ class DockerPipelineOrchestrator:
                 'command': [
                     'python', 'trend-analyzer/trend_analyzer.py',
                     '--gemini_api_key', self.gemini_api_key,
-                    '--firebase_config', '/app/firebase-config.json'
+                    '--firebase_config', '/app/csproject2025-cfcb7-firebase-adminsdk-fbsvc-6764c4a1fb.json'
                 ],
                 'timeout': 1200  # 20분
             },
@@ -278,7 +287,7 @@ class DockerPipelineOrchestrator:
                 'command': [
                     'python', 'library-searcher/search_book.py',
                     '--gemini_api_key', self.gemini_api_key,
-                    '--firebase_config', '/app/firebase-config.json',
+                    '--firebase_config', '/app/csproject2025-cfcb7-firebase-adminsdk-fbsvc-6764c4a1fb.json',
                     '--books_per_keyword', '10',
                     '--final_books_per_trend', '5'
                 ],

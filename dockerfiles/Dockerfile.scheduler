@@ -1,20 +1,47 @@
-# Scheduler Service - 새벽 4시 파이프라인 실행 스케줄러
+# Scheduler Service - 새벽 4시 파이프라인 실행 스케줄러 (Docker CLI 포함)
 FROM python:3.11-slim
 
 WORKDIR /app
 
-# 시스템 의존성 설치 (Chrome + cron 포함)
+# 시스템 의존성 설치 (Chrome + cron + Docker CLI 포함)
 RUN apt-get update && apt-get install -y \
     wget \
     curl \
     unzip \
     gnupg \
     cron \
+    ca-certificates \
+    lsb-release \
     && wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | apt-key add - \
     && echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list \
     && apt-get update \
     && apt-get install -y google-chrome-stable \
     && rm -rf /var/lib/apt/lists/*
+    
+# Docker CLI 설치
+RUN curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg \
+    && echo "deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/debian $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null \
+    && apt-get update \
+    && apt-get install -y docker-ce-cli \
+    && rm -rf /var/lib/apt/lists/*
+
+# Docker 그룹 처리 (기존 그룹 확인 후 처리)
+RUN if ! getent group docker; then groupadd docker; fi \
+    && usermod -aG docker root
+
+# Docker 소켓 권한 설정을 위한 스크립트 생성
+RUN echo '#!/bin/bash\n\
+# Docker 소켓 권한 확인 및 설정\n\
+if [ -S /var/run/docker.sock ]; then\n\
+    echo "🐳 Docker 소켓 발견"\n\
+    ls -la /var/run/docker.sock\n\
+    # 소켓 권한을 더 관대하게 설정 (임시)\n\
+    chmod 666 /var/run/docker.sock 2>/dev/null || echo "⚠️ Docker 소켓 권한 변경 실패"\n\
+    echo "✅ Docker CLI 테스트: $(docker version --format '"'"'{{.Client.Version}}'"'"' 2>/dev/null || echo '"'"'연결 실패'"'"')"\n\
+else\n\
+    echo "❌ Docker 소켓이 마운트되지 않았습니다"\n\
+fi\n\
+' > /app/check_docker.sh && chmod +x /app/check_docker.sh
 
 # Python 의존성 설치
 COPY requirements.txt .
@@ -43,8 +70,8 @@ ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
 
 # 스케줄러 스크립트에 실행 권한 부여
-RUN chmod +x scheduler/pipeline_runner.sh
-RUN chmod +x scheduler/daily_pipeline.py
+RUN chmod +x scheduler/docker_pipeline_runner.sh
+RUN chmod +x scheduler/docker_pipeline_orchestrator.py
 
 # cron 작업 설정 (새벽 4시에 실행 - KST 기준)
 # 한국 시간대 설정
@@ -52,7 +79,7 @@ ENV TZ=Asia/Seoul
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
 # cron 작업 등록
-RUN echo "0 4 * * * cd /app && /app/scheduler/pipeline_runner.sh >> /var/log/pipeline.log 2>&1" > /etc/cron.d/daily-pipeline
+RUN echo "0 4 * * * cd /app && /app/scheduler/docker_pipeline_runner.sh >> /var/log/pipeline.log 2>&1" > /etc/cron.d/daily-pipeline
 
 # cron 작업 권한 설정
 RUN chmod 0644 /etc/cron.d/daily-pipeline
@@ -66,13 +93,16 @@ RUN chmod 666 /var/log/pipeline.log
 HEALTHCHECK --interval=60s --timeout=10s --start-period=5s --retries=3 \
     CMD test -f /var/log/pipeline.log || exit 1
 
-# 시작 스크립트 생성
+# 시작 스크립트 생성 (Docker 확인 포함)
 RUN echo '#!/bin/bash\n\
 echo "🕐 스케줄러 서비스 시작 - 새벽 4시에 파이프라인 자동 실행"\n\
 echo "📅 현재 시간: $(date)"\n\
 echo "⏰ 다음 실행 예정: 매일 새벽 4:00 AM (KST)"\n\
 echo "📋 실행 순서: 키워드수집 → 뉴스수집 → 트렌드분석 → 도서추천"\n\
 echo "📝 로그 위치: /var/log/pipeline.log"\n\
+echo "=" * 60\n\
+# Docker 연결 확인\n\
+/app/check_docker.sh\n\
 echo "=" * 60\n\
 # cron 서비스 시작\n\
 service cron start\n\

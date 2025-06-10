@@ -19,6 +19,7 @@ RUN pip install --no-cache-dir \
 
 # 소스 코드 복사
 COPY trend-analyzer/ ./trend-analyzer/
+COPY csproject2025-cfcb7-firebase-adminsdk-fbsvc-6764c4a1fb.json /app/csproject2025-cfcb7-firebase-adminsdk-fbsvc-6764c4a1fb.json
 
 # 환경변수 설정
 ENV PYTHONPATH=/app
