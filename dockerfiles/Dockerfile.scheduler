@@ -1,0 +1,86 @@
+# Scheduler Service - 새벽 4시 파이프라인 실행 스케줄러
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# 시스템 의존성 설치 (Chrome + cron 포함)
+RUN apt-get update && apt-get install -y \
+    wget \
+    curl \
+    unzip \
+    gnupg \
+    cron \
+    && wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | apt-key add - \
+    && echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list \
+    && apt-get update \
+    && apt-get install -y google-chrome-stable \
+    && rm -rf /var/lib/apt/lists/*
+
+# Python 의존성 설치
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# 추가 의존성 (모든 서비스 통합)
+RUN pip install --no-cache-dir \
+    selenium>=4.0.0 \
+    webdriver-manager>=3.8.0 \
+    google-generativeai>=0.8.0 \
+    firebase-admin>=6.9.0 \
+    requests>=2.31.0 \
+    beautifulsoup4>=4.9.0 \
+    lxml>=4.6.0
+
+# 모든 소스 코드 복사
+COPY trend-collector/ ./trend-collector/
+COPY trend-analyzer/ ./trend-analyzer/
+COPY library-searcher/ ./library-searcher/
+
+# 스케줄러 스크립트 복사
+COPY scheduler/ ./scheduler/
+
+# 환경변수 설정
+ENV PYTHONPATH=/app
+ENV PYTHONUNBUFFERED=1
+
+# 스케줄러 스크립트에 실행 권한 부여
+RUN chmod +x scheduler/pipeline_runner.sh
+RUN chmod +x scheduler/daily_pipeline.py
+
+# cron 작업 설정 (새벽 4시에 실행 - KST 기준)
+# 한국 시간대 설정
+ENV TZ=Asia/Seoul
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+
+# cron 작업 등록
+RUN echo "0 4 * * * cd /app && /app/scheduler/pipeline_runner.sh >> /var/log/pipeline.log 2>&1" > /etc/cron.d/daily-pipeline
+
+# cron 작업 권한 설정
+RUN chmod 0644 /etc/cron.d/daily-pipeline
+RUN crontab /etc/cron.d/daily-pipeline
+
+# 로그 디렉토리 및 파일 생성
+RUN touch /var/log/pipeline.log
+RUN chmod 666 /var/log/pipeline.log
+
+# 헬스체크 추가
+HEALTHCHECK --interval=60s --timeout=10s --start-period=5s --retries=3 \
+    CMD test -f /var/log/pipeline.log || exit 1
+
+# 시작 스크립트 생성
+RUN echo '#!/bin/bash\n\
+echo "🕐 스케줄러 서비스 시작 - 새벽 4시에 파이프라인 자동 실행"\n\
+echo "📅 현재 시간: $(date)"\n\
+echo "⏰ 다음 실행 예정: 매일 새벽 4:00 AM (KST)"\n\
+echo "📋 실행 순서: 키워드수집 → 뉴스수집 → 트렌드분석 → 도서추천"\n\
+echo "📝 로그 위치: /var/log/pipeline.log"\n\
+echo "=" * 60\n\
+# cron 서비스 시작\n\
+service cron start\n\
+# 로그 파일 모니터링으로 컨테이너 유지\n\
+tail -f /var/log/pipeline.log\n\
+' > /app/start_scheduler.sh
+
+RUN chmod +x /app/start_scheduler.sh
+
+# cron 서비스 시작 및 로그 모니터링
+CMD ["/app/start_scheduler.sh"]

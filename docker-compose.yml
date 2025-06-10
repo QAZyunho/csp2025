@@ -1,6 +1,22 @@
 
+# services:
+#   # 추천 API 서버만
+#   recommendation-api:
+#     build:
+#       context: .
+#       dockerfile: dockerfiles/Dockerfile.recommendation-api
+#     environment:
+#       - FIREBASE_CONFIG_PATH=/app/csproject2025-cfcb7-firebase-adminsdk-fbsvc-6764c4a1fb.json
+#     volumes:
+#       - ./csproject2025-cfcb7-firebase-adminsdk-fbsvc-6764c4a1fb.json:/app/csproject2025-cfcb7-firebase-adminsdk-fbsvc-6764c4a1fb.json:ro
+#     ports:
+#       - "5001:5001"
+#     restart: unless-stopped
+
+version: '3.8'
+
 services:
-  # 추천 API 서버만
+  # 항상 실행되는 추천 API 서버
   recommendation-api:
     build:
       context: .
@@ -12,3 +28,43 @@ services:
     ports:
       - "5001:5001"
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5001/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # 스케줄러 서비스 (새벽 4시에 전체 파이프라인 실행)
+  scheduler:
+    build:
+      context: .
+      dockerfile: dockerfiles/Dockerfile.scheduler
+    environment:
+      - FIREBASE_CONFIG_PATH=/app/csproject2025-cfcb7-firebase-adminsdk-fbsvc-6764c4a1fb.json
+      - GEMINI_API_KEY=AIzaSyD1hxIJlbglSksUxRyLZkMZHrWyqFEwpEs
+      - NAVER_CLIENT_ID=RPUhkWY7UVq81hlMiHNL
+      - NAVER_CLIENT_SECRET=u5HUugAYuv
+    volumes:
+      - ./csproject2025-cfcb7-firebase-adminsdk-fbsvc-6764c4a1fb.json:/app/csproject2025-cfcb7-firebase-adminsdk-fbsvc-6764c4a1fb.json:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro  # 다른 컨테이너 실행을 위해
+    restart: unless-stopped
+    depends_on:
+      - recommendation-api
+
+  # 프론트엔드 (선택사항)
+  web-ui:
+    build:
+      context: .
+      dockerfile: dockerfiles/Dockerfile.web-ui
+      args:
+        - REACT_APP_API_URL=http://localhost:5001
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+    depends_on:
+      - recommendation-api
+
+networks:
+  default:
+    name: cs-project-network
