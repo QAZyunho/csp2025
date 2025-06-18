@@ -34,16 +34,16 @@ services:
       - ./csproject2025-cfcb7-firebase-adminsdk-fbsvc-6764c4a1fb.json:/app/csproject2025-cfcb7-firebase-adminsdk-fbsvc-6764c4a1fb.json:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
     restart: unless-stopped
-    depends_on:
-      - recommendation-api
 
   # 웹 UI (기존 Dockerfile.web-ui 사용)
   web-ui:
+    environment:
+    - API_URL=http://recommendation-api:5001
     build:
       context: .
       dockerfile: dockerfiles/Dockerfile.web-ui
     ports:
-      - "3001:3000"
+      - "3001:80"
     restart: unless-stopped
     depends_on:
       - recommendation-api

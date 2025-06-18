@@ -61,6 +61,7 @@ RUN pip install --no-cache-dir \
 COPY trend-collector/ ./trend-collector/
 COPY trend-analyzer/ ./trend-analyzer/
 COPY library-searcher/ ./library-searcher/
+COPY csproject2025-cfcb7-firebase-adminsdk-fbsvc-6764c4a1fb.json /app/csproject2025-cfcb7-firebase-adminsdk-fbsvc-6764c4a1fb.json
 
 # 스케줄러 스크립트 복사
 COPY scheduler/ ./scheduler/
@@ -79,7 +80,7 @@ ENV TZ=Asia/Seoul
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
 # cron 작업 등록
-RUN echo "0 4 * * * cd /app && /app/scheduler/docker_pipeline_runner.sh >> /var/log/pipeline.log 2>&1" > /etc/cron.d/daily-pipeline
+RUN echo "00 15 * * * cd /app && /app/scheduler/docker_pipeline_runner.sh >> /var/log/pipeline.log 2>&1" > /etc/cron.d/daily-pipeline
 
 # cron 작업 권한 설정
 RUN chmod 0644 /etc/cron.d/daily-pipeline
