@@ -14,12 +14,14 @@ recommender = None
 def init_recommender():
     global recommender
     try:
-        firebase_config = "firebase.json"
+        firebase_config = "csproject2025-cfcb7-firebase-adminsdk-fbsvc-f15f257ae3.json"
         recommender = BookRecommender(firebase_config)
         recommender.load_books()
         return True
     except Exception as e:
         logger.error(f"추천 시스템 초기화 실패: {e}"); return False
+    
+init_recommender()
 
 @app.route('/')
 def index(): return jsonify({'status': 'running'})
@@ -43,7 +45,7 @@ def create_user_api():
     if not recommender: return jsonify({'error': 'Recommender not initialized'}), 500
     data = request.get_json()
     if not data or 'user_id' not in data or 'name' not in data: return jsonify({'error': 'user_id and name are required'}), 400
-    user_profile = {'user_id': data['user_id'], 'name': data.get('name', ''), 'age_group': data.get('age_group', ''), 'reading_frequency': data.get('reading_frequency', ''), 'preferred_keywords': data.get('preferred_keywords', []), 'preferred_types': data.get('preferred_types', []), 'created_at': datetime.now(), 'last_active': datetime.now()}
+    user_profile = {'user_id': data['user_id'], 'name': data.get('name', ''), 'age_group': data.get('age_group', ''), 'reading_frequency': data.get('reading_frequency', ''), 'keyword_scores': data.get('keyword_scores', {}), 'preferred_types': data.get('preferred_types', []), 'created_at': datetime.now(), 'last_active': datetime.now()}
     recommender.db.collection('users').document(data['user_id']).set(user_profile)
     recommender.user_profiles[data['user_id']] = user_profile
     return jsonify({'message': 'User created successfully', 'user': user_profile}), 201
@@ -57,10 +59,15 @@ def get_latest_trends_api():
 @app.route('/api/books/by_keyword/<user_id>')
 def get_books_by_keyword_api(user_id):
     keyword = request.args.get('keyword')
+    page = request.args.get('page', 1, type=int)
+    page_size = request.args.get('page_size', 5, type=int)
+
     if not keyword: return jsonify({'error': 'keyword parameter is required'}), 400
     if not recommender: return jsonify({'error': 'Recommender not initialized'}), 500
-    books = recommender.get_books_for_keyword(user_id, keyword)
-    return jsonify({'keyword': keyword, 'books': books})
+    result = recommender.get_books_for_keyword(user_id, keyword, page=page, page_size=page_size)
+    
+    # keyword와 함께 결과 반환
+    return jsonify({'keyword': keyword, **result})
 
 @app.route('/api/recommendations/general/<user_id>')
 def get_general_recommendations_api(user_id):
@@ -80,7 +87,7 @@ def submit_feedback_api():
 if __name__ == '__main__':
     print("📚 간소화된 도서 추천 API 서버 시작")
     
-    if init_recommender():
+    if recommender:
         print("✅ 추천 시스템 초기화 성공")
         print(f"📖 로드된 도서: {len(recommender.books_df)}권")
         print("\n🌐 API 엔드포인트:")

@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>트렌드 기반 도서 추천 시스템</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header class="text-white text-center p-4 shadow-sm">
+        <h1>📚 트렌드 기반 도서 추천 시스템</h1>
+        <p class="lead">AI가 분석한 최신 트렌드를 바탕으로 맞춤형 도서를 추천해드립니다.</p>
+    </header>
+
+    <main class="container mt-4">
+        <div class="api-status mb-3 text-end">
+            <span id="api-status-indicator" class="badge bg-secondary fs-6">API 연결 확인 중...</span>
+        </div>
+
+        <ul class="nav nav-pills nav-fill" id="myTab" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="user-tab" data-bs-toggle="tab" data-bs-target="#user-panel" type="button" role="tab">👤 사용자 설정</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="trends-tab" data-bs-toggle="tab" data-bs-target="#trends-panel" type="button" role="tab">📈 최신 트렌드</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="recs-tab" data-bs-toggle="tab" data-bs-target="#recs-panel" type="button" role="tab">✨ 맞춤 추천</button>
+            </li>
+        </ul>
+
+        <div class="tab-content p-4 border border-top-0 rounded-bottom" id="myTabContent">
+            <div class="tab-pane fade show active" id="user-panel" role="tabpanel">
+                <h4 class="text-center">사용자 선택 및 설정</h4>
+                <div class="d-flex justify-content-center align-items-center gap-2 mt-4">
+                    
+                    <div class="dropdown">
+                        <button class="btn btn-outline-secondary dropdown-toggle" type="button" id="user-select-btn" data-bs-toggle="dropdown" aria-expanded="false" style="min-width: 250px;">
+                            사용자를 선택하세요
+                        </button>
+                        <ul class="dropdown-menu" id="user-select-list">
+                            </ul>
+                    </div>
+                    
+                    <button id="load-profile-btn" class="btn btn-custom">프로필 로드</button>
+                    <button id="create-user-btn" class="btn btn-custom" data-bs-toggle="modal" data-bs-target="#newUserModal">신규 사용자 생성</button>
+                </div>
+            </div>
+
+            <div class="tab-pane fade" id="trends-panel" role="tabpanel">
+                <h4 class="text-center">최신 트렌드 보기</h4>
+                <div id="trends-list" class="list-group mt-3">
+                    <div class="text-center p-5"><div class="spinner-border" role="status"><span class="visually-hidden">Loading...</span></div></div>
+                </div>
+            </div>
+
+            <div class="tab-pane fade" id="recs-panel" role="tabpanel">
+                <div id="recs-header" class="d-flex justify-content-between align-items-center">
+                    <h4 id="recs-title">맞춤 추천 보기</h4>
+                    <div>
+                        <button id="first-topic-btn" class="btn btn-sm btn-outline-secondary">맨 앞으로</button>
+                        <button id="prev-topic-btn" class="btn btn-sm btn-outline-secondary">◀ 이전</button>
+                        <button id="next-topic-btn" class="btn btn-sm btn-outline-secondary">다음 ▶</button>
+                    </div>
+                </div>
+                
+                <div id="recs-list" class="list-group mt-3">
+                    </div>
+
+                <div id="recs-pagination" class="d-flex justify-content-center mt-3"></div>
+            </div>
+        </div>
+    </main>
+
+    <div class="modal fade" id="bookRecommenderModal" tabindex="-1">
+        <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="bookRecommenderModalLabel">추천 도서</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body" id="bookRecommenderModalBody">
+                    </div>
+                <div id="modal-pagination" class="d-flex justify-content-center pb-3"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="newUserModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">신규 사용자 생성(* 필수)</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="new-user-form">
+                        <div class="mb-3"><label class="form-label">사용자 ID*</label><input type="text" class="form-control" id="new-user-id" required></div>
+                        <div class="mb-3"><label class="form-label">이름*</label><input type="text" class="form-control" id="new-user-name" required></div>
+                        <div class="mb-3"><label class="form-label">연령대(ex. 20대)</label><input type="text" class="form-control" id="new-user-age"></div>
+                        <div class="mb-3"><label class="form-label">독서 빈도(ex. 주 1회)</label><input type="text" class="form-control" id="new-user-freq"></div>
+                        <div class="mb-3"><label class="form-label">선호 키워드 (,로 구분)</label><input type="text" class="form-control" id="new-user-keywords"></div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">닫기</button>
+                    <button type="button" id="save-user-btn" class="btn btn-primary">저장하기</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="feedbackModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="feedbackModalLabel">피드백 남기기</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p><strong id="feedback-book-title"></strong> 책에 대한 만족도를 평가해주세요.</p>
+                    <div class="d-flex justify-content-center my-3 star-rating">
+                        <span data-value="1">☆</span>
+                        <span data-value="2">☆</span>
+                        <span data-value="3">☆</span>
+                        <span data-value="4">☆</span>
+                        <span data-value="5">☆</span>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+                    <button type="button" id="submit-feedback-btn" class="btn btn-primary">평가 제출</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
