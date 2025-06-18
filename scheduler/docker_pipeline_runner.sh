@@ -105,7 +105,7 @@ run_docker_step() {
         --name "$CONTAINER_NAME"
         -e PYTHONUNBUFFERED=1
         -e PYTHONPATH=/app
-        -v "$FIREBASE_CONFIG_PATH:/app/firebase-config.json:ro"
+        -v "$FIREBASE_CONFIG_PATH:/app/csproject2025-cfcb7-firebase-adminsdk-fbsvc-6764c4a1fb.json:ro"
     )
     
     # 단계별 추가 환경변수
@@ -172,7 +172,7 @@ run_pipeline() {
         "pipeline-keyword-collector-$DATE" \
         python trend-collector/keyword_collector.py \
         --gemini_api_key "$GEMINI_API_KEY" \
-        --firebase_config /app/firebase-config.json; then
+        --firebase_config /app/csproject2025-cfcb7-firebase-adminsdk-fbsvc-6764c4a1fb.json; then
         error_exit "키워드 수집 실패"
     fi
     
@@ -185,7 +185,7 @@ run_pipeline() {
         "$BASE_TAG-news-collector" \
         "pipeline-news-collector-$DATE" \
         python trend-collector/naver_news_collector.py \
-        --firebase_config /app/firebase-config.json \
+        --firebase_config /app/csproject2025-cfcb7-firebase-adminsdk-fbsvc-6764c4a1fb.json \
         --max_articles 5; then
         error_exit "뉴스 수집 실패"
     fi
@@ -200,7 +200,7 @@ run_pipeline() {
         "pipeline-trend-analyzer-$DATE" \
         python trend-analyzer/trend_analyzer.py \
         --gemini_api_key "$GEMINI_API_KEY" \
-        --firebase_config /app/firebase-config.json; then
+        --firebase_config /app/csproject2025-cfcb7-firebase-adminsdk-fbsvc-6764c4a1fb.json; then
         error_exit "트렌드 분석 실패"
     fi
     
@@ -214,7 +214,7 @@ run_pipeline() {
         "pipeline-library-searcher-$DATE" \
         python library-searcher/search_book.py \
         --gemini_api_key "$GEMINI_API_KEY" \
-        --firebase_config /app/firebase-config.json \
+        --firebase_config /app/csproject2025-cfcb7-firebase-adminsdk-fbsvc-6764c4a1fb.json \
         --books_per_keyword 10 \
         --final_books_per_trend 5; then
         error_exit "도서 추천 실패"

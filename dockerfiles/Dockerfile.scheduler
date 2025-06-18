@@ -1,23 +1,21 @@
-# Scheduler Service - 새벽 4시 파이프라인 실행 스케줄러 (Docker CLI 포함)
+# Scheduler Service - 크론 작업 및 파이프라인 관리
 FROM python:3.11-slim
 
 WORKDIR /app
 
-# 시스템 의존성 설치 (Chrome + cron + Docker CLI 포함)
+# 시스템 의존성 설치 (cron, docker, timezone 포함)
 RUN apt-get update && apt-get install -y \
-    wget \
+    cron \
     curl \
+    wget \
     unzip \
     gnupg \
-    cron \
     ca-certificates \
+    tzdata \
+    apt-transport-https \
     lsb-release \
-    && wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | apt-key add - \
-    && echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list \
-    && apt-get update \
-    && apt-get install -y google-chrome-stable \
     && rm -rf /var/lib/apt/lists/*
-    
+
 # Docker CLI 설치
 RUN curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg \
     && echo "deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/debian $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null \
@@ -25,93 +23,88 @@ RUN curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /
     && apt-get install -y docker-ce-cli \
     && rm -rf /var/lib/apt/lists/*
 
-# Docker 그룹 처리 (기존 그룹 확인 후 처리)
-RUN if ! getent group docker; then groupadd docker; fi \
-    && usermod -aG docker root
+# Docker Compose 설치
+RUN curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose \
+    && chmod +x /usr/local/bin/docker-compose
 
-# Docker 소켓 권한 설정을 위한 스크립트 생성
-RUN echo '#!/bin/bash\n\
-# Docker 소켓 권한 확인 및 설정\n\
-if [ -S /var/run/docker.sock ]; then\n\
-    echo "🐳 Docker 소켓 발견"\n\
-    ls -la /var/run/docker.sock\n\
-    # 소켓 권한을 더 관대하게 설정 (임시)\n\
-    chmod 666 /var/run/docker.sock 2>/dev/null || echo "⚠️ Docker 소켓 권한 변경 실패"\n\
-    echo "✅ Docker CLI 테스트: $(docker version --format '"'"'{{.Client.Version}}'"'"' 2>/dev/null || echo '"'"'연결 실패'"'"')"\n\
-else\n\
-    echo "❌ Docker 소켓이 마운트되지 않았습니다"\n\
-fi\n\
-' > /app/check_docker.sh && chmod +x /app/check_docker.sh
+# 타임존 설정 (한국 시간)
+ENV TZ=Asia/Seoul
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+
+# Chrome + ChromeDriver 설치 (키워드 수집용)
+RUN wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | apt-key add - \
+    && echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list \
+    && apt-get update \
+    && apt-get install -y google-chrome-stable \
+    && rm -rf /var/lib/apt/lists/*
 
 # Python 의존성 설치
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 추가 의존성 (모든 서비스 통합)
+# 추가 의존성 (모든 서비스용)
 RUN pip install --no-cache-dir \
     selenium>=4.0.0 \
     webdriver-manager>=3.8.0 \
     google-generativeai>=0.8.0 \
     firebase-admin>=6.9.0 \
-    requests>=2.31.0 \
-    beautifulsoup4>=4.9.0 \
-    lxml>=4.6.0
+    requests>=2.31.0
 
-# 모든 소스 코드 복사
+# 소스 코드 복사
 COPY trend-collector/ ./trend-collector/
 COPY trend-analyzer/ ./trend-analyzer/
 COPY library-searcher/ ./library-searcher/
-COPY csproject2025-cfcb7-firebase-adminsdk-fbsvc-6764c4a1fb.json /app/csproject2025-cfcb7-firebase-adminsdk-fbsvc-6764c4a1fb.json
-
-# 스케줄러 스크립트 복사
 COPY scheduler/ ./scheduler/
+
+# 로그 디렉토리 생성
+RUN mkdir -p /var/log
+
+# cron 작업 등록 (환경변수 포함) - 한국 시간 기준 오후 3시 (15:00)
+RUN echo "# 환경변수 설정" > /etc/cron.d/daily-pipeline && \
+    echo "TZ=Asia/Seoul" >> /etc/cron.d/daily-pipeline && \
+    echo "FIREBASE_CONFIG_PATH=/app/csproject2025-cfcb7-firebase-adminsdk-fbsvc-6764c4a1fb.json" >> /etc/cron.d/daily-pipeline && \
+    echo "GEMINI_API_KEY=AIzaSyD1hxIJlbglSksUxRyLZkMZHrWyqFEwpEs" >> /etc/cron.d/daily-pipeline && \
+    echo "NAVER_CLIENT_ID=RPUhkWY7UVq81hlMiHNL" >> /etc/cron.d/daily-pipeline && \
+    echo "NAVER_CLIENT_SECRET=u5HUugAYuv" >> /etc/cron.d/daily-pipeline && \
+    echo "PYTHONPATH=/app" >> /etc/cron.d/daily-pipeline && \
+    echo "PYTHONUNBUFFERED=1" >> /etc/cron.d/daily-pipeline && \
+    echo "PATH=/usr/local/bin:/usr/bin:/bin" >> /etc/cron.d/daily-pipeline && \
+    echo "" >> /etc/cron.d/daily-pipeline && \
+    echo "# 매일 한국시간 오후 3시(15:00)에 파이프라인 실행" >> /etc/cron.d/daily-pipeline && \
+    echo "50 17 * * * root cd /app && /app/scheduler/docker_pipeline_runner.sh >> /var/log/pipeline.log 2>&1" >> /etc/cron.d/daily-pipeline && \
+    echo "" >> /etc/cron.d/daily-pipeline
+
+# cron 작업 권한 설정
+RUN chmod 0644 /etc/cron.d/daily-pipeline
+
+# crontab 등록
+RUN crontab /etc/cron.d/daily-pipeline
 
 # 환경변수 설정
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
-
-# 스케줄러 스크립트에 실행 권한 부여
-RUN chmod +x scheduler/docker_pipeline_runner.sh
-RUN chmod +x scheduler/docker_pipeline_orchestrator.py
-
-# cron 작업 설정 (새벽 4시에 실행 - KST 기준)
-# 한국 시간대 설정
 ENV TZ=Asia/Seoul
-RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
-# cron 작업 등록
-RUN echo "00 15 * * * cd /app && /app/scheduler/docker_pipeline_runner.sh >> /var/log/pipeline.log 2>&1" > /etc/cron.d/daily-pipeline
-
-# cron 작업 권한 설정
-RUN chmod 0644 /etc/cron.d/daily-pipeline
-RUN crontab /etc/cron.d/daily-pipeline
-
-# 로그 디렉토리 및 파일 생성
-RUN touch /var/log/pipeline.log
-RUN chmod 666 /var/log/pipeline.log
-
-# 헬스체크 추가
-HEALTHCHECK --interval=60s --timeout=10s --start-period=5s --retries=3 \
-    CMD test -f /var/log/pipeline.log || exit 1
-
-# 시작 스크립트 생성 (Docker 확인 포함)
-RUN echo '#!/bin/bash\n\
-echo "🕐 스케줄러 서비스 시작 - 새벽 4시에 파이프라인 자동 실행"\n\
-echo "📅 현재 시간: $(date)"\n\
-echo "⏰ 다음 실행 예정: 매일 새벽 4:00 AM (KST)"\n\
-echo "📋 실행 순서: 키워드수집 → 뉴스수집 → 트렌드분석 → 도서추천"\n\
-echo "📝 로그 위치: /var/log/pipeline.log"\n\
-echo "=" * 60\n\
-# Docker 연결 확인\n\
-/app/check_docker.sh\n\
-echo "=" * 60\n\
-# cron 서비스 시작\n\
-service cron start\n\
-# 로그 파일 모니터링으로 컨테이너 유지\n\
-tail -f /var/log/pipeline.log\n\
-' > /app/start_scheduler.sh
+# 시작 스크립트 생성
+RUN echo '#!/bin/bash' > /app/start_scheduler.sh && \
+    echo 'echo "🕐 스케줄러 시작 - 매일 한국시간 오후 3시(15:00)에 파이프라인 실행"' >> /app/start_scheduler.sh && \
+    echo 'echo "📁 로그 위치: /var/log/pipeline.log"' >> /app/start_scheduler.sh && \
+    echo 'echo "⏰ 현재 시간: $(date)"' >> /app/start_scheduler.sh && \
+    echo 'echo "🌏 타임존: $TZ"' >> /app/start_scheduler.sh && \
+    echo 'echo "🐳 Docker 버전: $(docker --version 2>/dev/null || echo "Docker not available")"' >> /app/start_scheduler.sh && \
+    echo 'echo "📋 크론 작업:"' >> /app/start_scheduler.sh && \
+    echo 'crontab -l' >> /app/start_scheduler.sh && \
+    echo '' >> /app/start_scheduler.sh && \
+    echo '# cron 서비스 시작' >> /app/start_scheduler.sh && \
+    echo 'service cron start' >> /app/start_scheduler.sh && \
+    echo '' >> /app/start_scheduler.sh && \
+    echo '# 크론 로그 활성화' >> /app/start_scheduler.sh && \
+    echo 'touch /var/log/cron.log' >> /app/start_scheduler.sh && \
+    echo '' >> /app/start_scheduler.sh && \
+    echo '# 무한 대기 (컨테이너 유지)' >> /app/start_scheduler.sh && \
+    echo 'tail -f /dev/null' >> /app/start_scheduler.sh
 
 RUN chmod +x /app/start_scheduler.sh
 
-# cron 서비스 시작 및 로그 모니터링
+# 실행 명령
 CMD ["/app/start_scheduler.sh"]
