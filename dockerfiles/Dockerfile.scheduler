@@ -55,6 +55,7 @@ COPY trend-collector/ ./trend-collector/
 COPY trend-analyzer/ ./trend-analyzer/
 COPY library-searcher/ ./library-searcher/
 COPY scheduler/ ./scheduler/
+COPY csproject2025-cfcb7-firebase-adminsdk-fbsvc-6764c4a1fb.json /app/csproject2025-cfcb7-firebase-adminsdk-fbsvc-6764c4a1fb.json
 
 # 로그 디렉토리 생성
 RUN mkdir -p /var/log
@@ -62,7 +63,6 @@ RUN mkdir -p /var/log
 # cron 작업 등록 (환경변수 포함) - 한국 시간 기준 오후 3시 (15:00)
 RUN echo "# 환경변수 설정" > /etc/cron.d/daily-pipeline && \
     echo "TZ=Asia/Seoul" >> /etc/cron.d/daily-pipeline && \
-    echo "FIREBASE_CONFIG_PATH=/app/csproject2025-cfcb7-firebase-adminsdk-fbsvc-6764c4a1fb.json" >> /etc/cron.d/daily-pipeline && \
     echo "GEMINI_API_KEY=AIzaSyD1hxIJlbglSksUxRyLZkMZHrWyqFEwpEs" >> /etc/cron.d/daily-pipeline && \
     echo "NAVER_CLIENT_ID=RPUhkWY7UVq81hlMiHNL" >> /etc/cron.d/daily-pipeline && \
     echo "NAVER_CLIENT_SECRET=u5HUugAYuv" >> /etc/cron.d/daily-pipeline && \
@@ -71,7 +71,7 @@ RUN echo "# 환경변수 설정" > /etc/cron.d/daily-pipeline && \
     echo "PATH=/usr/local/bin:/usr/bin:/bin" >> /etc/cron.d/daily-pipeline && \
     echo "" >> /etc/cron.d/daily-pipeline && \
     echo "# 매일 한국시간 오후 3시(15:00)에 파이프라인 실행" >> /etc/cron.d/daily-pipeline && \
-    echo "50 17 * * * root cd /app && /app/scheduler/docker_pipeline_runner.sh >> /var/log/pipeline.log 2>&1" >> /etc/cron.d/daily-pipeline && \
+    echo "05 18 * * * root cd /app && /app/scheduler/docker_pipeline_runner.sh >> /var/log/pipeline.log 2>&1" >> /etc/cron.d/daily-pipeline && \
     echo "" >> /etc/cron.d/daily-pipeline
 
 # cron 작업 권한 설정
