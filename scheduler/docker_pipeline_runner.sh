@@ -24,7 +24,8 @@ check_env() {
     log "🔍 환경변수 확인 중..."
     
     if [ -z "$FIREBASE_CONFIG_PATH" ]; then
-        error_exit "FIREBASE_CONFIG_PATH 환경변수가 설정되지 않았습니다"
+        FIREBASE_CONFIG_PATH="/app/csproject2025-cfcb7-firebase-adminsdk-fbsvc-6764c4a1fb.json"
+        log "⚠️ FIREBASE_CONFIG_PATH 기본값 설정: $FIREBASE_CONFIG_PATH"
     fi
     
     if [ -z "$GEMINI_API_KEY" ]; then
@@ -33,6 +34,11 @@ check_env() {
     
     if [ -z "$NAVER_CLIENT_ID" ] || [ -z "$NAVER_CLIENT_SECRET" ]; then
         error_exit "네이버 API 키가 설정되지 않았습니다"
+    fi
+    
+    # Firebase 설정 파일 확인
+    if [ ! -f "$FIREBASE_CONFIG_PATH" ]; then
+        error_exit "Firebase 설정 파일이 없습니다: $FIREBASE_CONFIG_PATH"
     fi
     
     log "✅ 환경변수 확인 완료"
@@ -45,8 +51,11 @@ setup_network() {
     log "🌐 Docker 네트워크 설정 중..."
     
     if ! docker network ls | grep -q "$NETWORK_NAME"; then
-        docker network create "$NETWORK_NAME"
-        log "✅ Docker 네트워크 생성: $NETWORK_NAME"
+        if docker network create "$NETWORK_NAME"; then
+            log "✅ Docker 네트워크 생성: $NETWORK_NAME"
+        else
+            log "⚠️ 네트워크 생성 실패, 기존 네트워크 사용: $NETWORK_NAME"
+        fi
     else
         log "✅ Docker 네트워크 확인: $NETWORK_NAME"
     fi
@@ -74,18 +83,18 @@ build_images() {
         if [[ -z $(docker images -q "$IMAGE_NAME" 2>/dev/null) ]]; then
             log "🔨 이미지 빌드: $IMAGE_NAME"
             
-            if ! docker build -t "$IMAGE_NAME" -f "$DOCKERFILE" "$BUILD_CONTEXT"; then
+            if docker build -t "$IMAGE_NAME" -f "$DOCKERFILE" "$BUILD_CONTEXT"; then
+                log "✅ 이미지 빌드 완료: $IMAGE_NAME"
+            else
                 error_exit "이미지 빌드 실패: $IMAGE_NAME"
             fi
-            
-            log "✅ 이미지 빌드 완료: $IMAGE_NAME"
         else
             log "✅ 이미지 존재 확인: $IMAGE_NAME"
         fi
     done
 }
 
-# Docker 컨테이너로 단계 실행
+# Docker 컨테이너로 단계 실행 (개선된 버전)
 run_docker_step() {
     local STEP_NAME="$1"
     local IMAGE_NAME="$2"
@@ -94,6 +103,9 @@ run_docker_step() {
     local COMMAND=("$@")
     
     log "🐳 $STEP_NAME 시작..."
+    log "   📦 이미지: $IMAGE_NAME"
+    log "   🏷️ 컨테이너: $CONTAINER_NAME"
+    log "   🔧 명령어: ${COMMAND[*]}"
     
     # 기존 컨테이너 정리 (같은 이름이 있을 경우)
     docker rm -f "$CONTAINER_NAME" 2>/dev/null || true
@@ -110,9 +122,18 @@ run_docker_step() {
     
     # 단계별 추가 환경변수
     case "$STEP_NAME" in
+        *"키워드"*)
+            DOCKER_CMD+=(-e "GEMINI_API_KEY=$GEMINI_API_KEY")
+            ;;
         *"뉴스"*)
             DOCKER_CMD+=(-e "NAVER_CLIENT_ID=$NAVER_CLIENT_ID")
             DOCKER_CMD+=(-e "NAVER_CLIENT_SECRET=$NAVER_CLIENT_SECRET")
+            ;;
+        *"분석"*)
+            DOCKER_CMD+=(-e "GEMINI_API_KEY=$GEMINI_API_KEY")
+            ;;
+        *"도서"*)
+            DOCKER_CMD+=(-e "GEMINI_API_KEY=$GEMINI_API_KEY")
             ;;
     esac
     
@@ -123,14 +144,26 @@ run_docker_step() {
     # 컨테이너 실행
     local START_TIME=$(date +%s)
     
+    log "🚀 실행 명령: ${DOCKER_CMD[*]}"
+    
     if "${DOCKER_CMD[@]}"; then
         local END_TIME=$(date +%s)
         local DURATION=$((END_TIME - START_TIME))
         log "✅ $STEP_NAME 완료 (소요시간: ${DURATION}초)"
         return 0
     else
-        log "❌ $STEP_NAME 실패"
-        return 1
+        local RETURN_CODE=$?
+        log "❌ $STEP_NAME 실패 (종료코드: $RETURN_CODE)"
+        
+        # 컨테이너 로그 확인 시도
+        if docker ps -a | grep -q "$CONTAINER_NAME"; then
+            log "📋 컨테이너 로그:"
+            docker logs "$CONTAINER_NAME" 2>&1 | tail -20 | while read line; do
+                log "   $line"
+            done
+        fi
+        
+        return $RETURN_CODE
     fi
 }
 
@@ -138,18 +171,20 @@ run_docker_step() {
 check_api_health() {
     log "🏥 추천 API 서버 상태 확인..."
     
-    local MAX_RETRIES=5
+    local MAX_RETRIES=3
     local RETRY_COUNT=0
     
     while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
-        if docker run --rm --network cs-project-network curlimages/curl:latest \
+        if timeout 10 docker run --rm --network cs-project-network curlimages/curl:latest \
            curl -f -s http://recommendation-api:5001/ > /dev/null 2>&1; then
             log "✅ 추천 API 서버 정상 동작 중"
             return 0
         else
             RETRY_COUNT=$((RETRY_COUNT + 1))
             log "⚠️ API 서버 응답 없음 (시도 $RETRY_COUNT/$MAX_RETRIES)"
-            sleep 5
+            if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
+                sleep 5
+            fi
         fi
     done
     
@@ -162,9 +197,10 @@ run_pipeline() {
     local BASE_TAG="cs-project-2025"
     
     log "🚀 Docker 컨테이너 기반 파이프라인 시작 (날짜: $DATE)"
-    log "=" 
+    log "=================================================================="
     
     # 1단계: 키워드 수집
+    log ""
     log "📡 1단계: 트렌드 키워드 수집 시작..."
     if ! run_docker_step \
         "1단계: 트렌드 키워드 수집" \
@@ -179,6 +215,7 @@ run_pipeline() {
     sleep 15  # 단계간 대기
     
     # 2단계: 뉴스 수집
+    log ""
     log "📰 2단계: 네이버 뉴스 수집 시작..."
     if ! run_docker_step \
         "2단계: 네이버 뉴스 수집" \
@@ -193,6 +230,7 @@ run_pipeline() {
     sleep 15
     
     # 3단계: 트렌드 분석
+    log ""
     log "🤖 3단계: Gemini 트렌드 분석 시작..."
     if ! run_docker_step \
         "3단계: Gemini 트렌드 분석" \
@@ -207,6 +245,7 @@ run_pipeline() {
     sleep 15
     
     # 4단계: 도서 검색 및 추천
+    log ""
     log "📚 4단계: 도서 검색 및 추천 시작..."
     if ! run_docker_step \
         "4단계: 도서 검색 및 추천" \
@@ -221,6 +260,7 @@ run_pipeline() {
     fi
     
     # 파이프라인 완료
+    log ""
     log "🎉 Docker 파이프라인 완료!"
     log "📊 결과 요약:"
     log "   📅 처리 날짜: $DATE"
@@ -254,9 +294,22 @@ cleanup_containers() {
     log "✅ 컨테이너 정리 완료"
 }
 
+# 디버그 정보 출력
+print_debug_info() {
+    log "🔍 디버그 정보:"
+    log "   🐳 Docker 버전: $(docker --version 2>/dev/null || echo 'Docker 없음')"
+    log "   📁 현재 디렉토리: $(pwd)"
+    log "   📄 Firebase 파일: $(ls -la $FIREBASE_CONFIG_PATH 2>/dev/null || echo '파일 없음')"
+    log "   🌐 네트워크: $(docker network ls | grep cs-project || echo '네트워크 없음')"
+    log "   📦 이미지: $(docker images | grep cs-project | wc -l)개"
+}
+
 # 메인 실행
 main() {
-    log "🌅 새벽 4시 Docker 파이프라인 시작"
+    log "🌅 Docker 파이프라인 시작"
+    
+    # 디버그 정보 출력
+    print_debug_info
     
     # 환경변수 확인
     check_env
@@ -266,9 +319,7 @@ main() {
     
     # Docker 이미지 빌드
     build_images
-    
-    # API 서버 상태 확인
-    check_api_health
+
     
     # 파이프라인 실행
     run_pipeline

@@ -31,9 +31,21 @@ services:
       - NAVER_CLIENT_ID=RPUhkWY7UVq81hlMiHNL
       - NAVER_CLIENT_SECRET=u5HUugAYuv
     volumes:
-      - ./csproject2025-cfcb7-firebase-adminsdk-fbsvc-6764c4a1fb.json:/app/csproject2025-cfcb7-firebase-adminsdk-fbsvc-6764c4a1fb.json:ro
+      # Firebase 설정 파일 마운트
+      - ${PWD}/csproject2025-cfcb7-firebase-adminsdk-fbsvc-6764c4a1fb.json:/app/csproject2025-cfcb7-firebase-adminsdk-fbsvc-6764c4a1fb.json:ro
+      # Docker 소켓 마운트 (파이프라인에서 다른 컨테이너 실행용)
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      # 스크립트 파일들 마운트
+      - ${PWD}/scheduler:/app/scheduler:ro
+      # Dockerfile들과 소스코드도 마운트 (빌드용)
+      - ${PWD}/dockerfiles:/app/dockerfiles:ro
+      - ${PWD}/trend-collector:/app/trend-collector:ro
+      - ${PWD}/trend-analyzer:/app/trend-analyzer:ro
+      - ${PWD}/library-searcher:/app/library-searcher:ro
+      - ${PWD}/requirements.txt:/app/requirements.txt:ro
     restart: unless-stopped
+    depends_on:
+      - recommendation-api
 
   # # 웹 UI (기존 Dockerfile.web-ui 사용)
   # web-ui:

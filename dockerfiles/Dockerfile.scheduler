@@ -55,7 +55,10 @@ COPY trend-collector/ ./trend-collector/
 COPY trend-analyzer/ ./trend-analyzer/
 COPY library-searcher/ ./library-searcher/
 COPY scheduler/ ./scheduler/
-COPY csproject2025-cfcb7-firebase-adminsdk-fbsvc-6764c4a1fb.json /app/csproject2025-cfcb7-firebase-adminsdk-fbsvc-6764c4a1fb.json
+
+# ⚠️ 중요: Firebase 파일은 복사하지 않음 (볼륨 마운트로만 제공)
+# 이 라인을 제거하거나 주석 처리
+# COPY csproject2025-cfcb7-firebase-adminsdk-fbsvc-6764c4a1fb.json /app/csproject2025-cfcb7-firebase-adminsdk-fbsvc-6764c4a1fb.json
 
 # 로그 디렉토리 생성
 RUN mkdir -p /var/log
@@ -94,6 +97,13 @@ RUN echo '#!/bin/bash' > /app/start_scheduler.sh && \
     echo 'echo "🐳 Docker 버전: $(docker --version 2>/dev/null || echo "Docker not available")"' >> /app/start_scheduler.sh && \
     echo 'echo "📋 크론 작업:"' >> /app/start_scheduler.sh && \
     echo 'crontab -l' >> /app/start_scheduler.sh && \
+    echo '' >> /app/start_scheduler.sh && \
+    echo '# Firebase 설정 파일 확인' >> /app/start_scheduler.sh && \
+    echo 'if [ -f "/app/csproject2025-cfcb7-firebase-adminsdk-fbsvc-6764c4a1fb.json" ]; then' >> /app/start_scheduler.sh && \
+    echo '    echo "✅ Firebase 설정 파일 마운트 확인됨"' >> /app/start_scheduler.sh && \
+    echo 'else' >> /app/start_scheduler.sh && \
+    echo '    echo "❌ Firebase 설정 파일이 마운트되지 않음"' >> /app/start_scheduler.sh && \
+    echo 'fi' >> /app/start_scheduler.sh && \
     echo '' >> /app/start_scheduler.sh && \
     echo '# cron 서비스 시작' >> /app/start_scheduler.sh && \
     echo 'service cron start' >> /app/start_scheduler.sh && \

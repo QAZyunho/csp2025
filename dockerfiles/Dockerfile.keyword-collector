@@ -1,4 +1,7 @@
-# Keyword Collector Service - 키워드 수집만
+# ===========================================
+# dockerfiles/Dockerfile.keyword-collector
+# ===========================================
+
 FROM python:3.11-slim
 
 WORKDIR /app
@@ -28,7 +31,9 @@ RUN pip install --no-cache-dir \
 
 # 소스 코드 복사
 COPY trend-collector/ ./trend-collector/
-COPY csproject2025-cfcb7-firebase-adminsdk-fbsvc-6764c4a1fb.json /app/csproject2025-cfcb7-firebase-adminsdk-fbsvc-6764c4a1fb.json
+
+# ❌ 이 라인을 제거 또는 주석 처리
+# COPY csproject2025-cfcb7-firebase-adminsdk-fbsvc-6764c4a1fb.json /app/csproject2025-cfcb7-firebase-adminsdk-fbsvc-6764c4a1fb.json
 
 # 환경변수 설정
 ENV PYTHONPATH=/app
@@ -36,3 +41,109 @@ ENV PYTHONUNBUFFERED=1
 
 # 키워드 수집만 실행
 CMD ["python", "trend-collector/keyword_collector.py"]
+
+# ===========================================
+# dockerfiles/Dockerfile.news-collector
+# ===========================================
+
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# 시스템 의존성 (Chrome 불필요)
+RUN apt-get update && apt-get install -y \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Python 의존성 설치
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# 추가 의존성
+RUN pip install --no-cache-dir \
+    firebase-admin>=6.9.0 \
+    requests>=2.31.0
+
+# 소스 코드 복사
+COPY trend-collector/ ./trend-collector/
+
+# ❌ 이 라인을 제거 또는 주석 처리
+# COPY csproject2025-cfcb7-firebase-adminsdk-fbsvc-6764c4a1fb.json /app/csproject2025-cfcb7-firebase-adminsdk-fbsvc-6764c4a1fb.json
+
+# 환경변수 설정
+ENV PYTHONPATH=/app
+ENV PYTHONUNBUFFERED=1
+
+# 뉴스 수집만 실행
+CMD ["python", "trend-collector/naver_news_collector.py"]
+
+# ===========================================
+# dockerfiles/Dockerfile.trend-analyzer
+# ===========================================
+
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# 시스템 의존성 설치
+RUN apt-get update && apt-get install -y \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Python 의존성 파일 복사 및 설치
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# 추가 의존성 (trend-analyzer 전용)
+RUN pip install --no-cache-dir \
+    google-generativeai>=0.8.0 \
+    firebase-admin>=6.9.0
+
+# 소스 코드 복사
+COPY trend-analyzer/ ./trend-analyzer/
+
+# ❌ 이 라인을 제거 또는 주석 처리
+# COPY csproject2025-cfcb7-firebase-adminsdk-fbsvc-6764c4a1fb.json /app/csproject2025-cfcb7-firebase-adminsdk-fbsvc-6764c4a1fb.json
+
+# 환경변수 설정
+ENV PYTHONPATH=/app
+ENV PYTHONUNBUFFERED=1
+
+# 실행 명령 (배치 작업)
+CMD ["python", "trend-analyzer/trend_analyzer.py"]
+
+# ===========================================
+# dockerfiles/Dockerfile.library-searcher
+# ===========================================
+
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# 시스템 의존성 설치
+RUN apt-get update && apt-get install -y \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Python 의존성 파일 복사 및 설치
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# 추가 의존성 (library-searcher 전용)
+RUN pip install --no-cache-dir \
+    google-generativeai>=0.8.0 \
+    firebase-admin>=6.9.0 \
+    requests>=2.31.0
+
+# 소스 코드 복사
+COPY library-searcher/ ./library-searcher/
+
+# ❌ 이 라인을 제거 또는 주석 처리
+# COPY csproject2025-cfcb7-firebase-adminsdk-fbsvc-6764c4a1fb.json /app/csproject2025-cfcb7-firebase-adminsdk-fbsvc-6764c4a1fb.json
+
+# 환경변수 설정
+ENV PYTHONPATH=/app
+ENV PYTHONUNBUFFERED=1
+
+# 실행 명령 (배치 작업)
+CMD ["python", "library-searcher/search_book.py"]
