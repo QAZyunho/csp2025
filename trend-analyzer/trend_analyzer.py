@@ -367,7 +367,8 @@ def main():
     parser.add_argument("--gemini_api_key", "-g", default='AIzaSyD1hxIJlbglSksUxRyLZkMZHrWyqFEwpEs',
                         help="Gemini API 키")
     parser.add_argument("--firebase_config", "-f", 
-                        default='../csproject2025-cfcb7-firebase-adminsdk-fbsvc-6764c4a1fb.json',
+                        default= os.getenv('FIREBASE_CONFIG_PATH', '/app/csproject2025-cfcb7-firebase-adminsdk-fbsvc-6764c4a1fb.json')
+,
                         help="Firebase 설정 파일 경로")
     
     args = parser.parse_args()

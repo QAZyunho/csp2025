@@ -341,7 +341,7 @@ def main():
     """메인 함수"""
     parser = argparse.ArgumentParser(description="Firebase 연동 네이버 뉴스 수집기")
     parser.add_argument("--firebase_config", "-f",
-                        default='../csproject2025-cfcb7-firebase-adminsdk-fbsvc-6764c4a1fb.json',
+                        default = os.getenv('FIREBASE_CONFIG_PATH', '/app/csproject2025-cfcb7-firebase-adminsdk-fbsvc-6764c4a1fb.json'),
                         help="Firebase 설정 파일 경로")
     parser.add_argument("--date", "-d",
                         help="키워드를 가져올 날짜 (YYMMDD 형식, 기본값: 오늘)")

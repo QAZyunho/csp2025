@@ -917,7 +917,7 @@ class CompleteKeywordProcessor:
 
 def main():
     api_key = "AIzaSyD1hxIJlbglSksUxRyLZkMZHrWyqFEwpEs"
-    firebase_config = "../csproject2025-cfcb7-firebase-adminsdk-fbsvc-6764c4a1fb.json"
+    firebase_config = os.getenv('FIREBASE_CONFIG_PATH', '/app/csproject2025-cfcb7-firebase-adminsdk-fbsvc-6764c4a1fb.json')
     
     """메인 실행 함수"""
     print("🚀 완전한 키워드 수집 + 그룹핑 시스템 시작")
