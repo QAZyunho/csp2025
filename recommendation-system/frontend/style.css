@@ -83,11 +83,9 @@ header h1 {
 
 /* 제목이 헤더 영역의 전체 너비를 차지하고, 그 안에서 텍스트를 가운데 정렬합니다. */
 #recs-title {
-    width: 100%;
-    text-align: center;
-    /* 버튼과 겹치지 않도록 양쪽에 약간의 여백을 줍니다. */
-    padding-left: 150px;
-    padding-right: 150px;
+    flex-grow: 1; /* 남는 공간을 모두 차지하도록 설정 */
+    text-align: center; /* 차지한 공간 안에서 텍스트를 가운데 정렬 */
+    margin: 0 1rem; /* 양쪽 버튼과의 최소 여백 확보 */
 }
 
 /* 버튼들을 담고 있는 div를 헤더의 오른쪽에 고정시킵니다. */

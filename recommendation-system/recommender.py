@@ -141,6 +141,33 @@ class BookRecommender:
 
         except Exception as e: 
             logger.error(f"최신 트렌드 로드 실패: {e}"); return []
+        
+    def get_all_trend_dates(self) -> List[str]:
+        """Firestore 'trend' 컬렉션의 모든 문서 ID(날짜)를 가져와 정렬하여 반환합니다."""
+        if not self.db: return []
+        try:
+            docs_ref = self.db.collection('trend').list_documents()
+            # ID가 'YYMMDD' 형식이므로, 문자열 정렬을 위해 숫자 변환 없이 그대로 사용하고 내림차순 정렬
+            doc_ids = sorted([doc.id for doc in docs_ref], reverse=True)
+            return doc_ids
+        except Exception as e:
+            logger.error(f"모든 트렌드 날짜 로드 실패: {e}")
+            return []
+
+    def get_trend_by_date(self, date_id: str) -> List[Dict]:
+        """특정 날짜 ID의 트렌드 문서를 가져옵니다."""
+        if not self.db: return []
+        try:
+            doc_ref = self.db.collection('trend').document(date_id)
+            doc = doc_ref.get()
+            if doc.exists:
+                return doc.to_dict().get('trends', [])
+            else:
+                logger.warning(f"'{date_id}'에 해당하는 트렌드 문서를 찾을 수 없습니다.")
+                return []
+        except Exception as e:
+            logger.error(f"'{date_id}' 트렌드 데이터 로드 실패: {e}")
+            return []
 
     def _clean_nan_values(self, data_dict: Dict) -> Dict:
         """재귀적으로 딕셔너리의 NaN 값을 None으로 바꿉니다."""
@@ -196,10 +223,12 @@ class BookRecommender:
     def get_general_recommendations(self, user_id: str) -> Dict:
         """선호 키워드를 제외한 새로운 트렌드 기반 추천"""
         user_profile = self.load_user_profile(user_id)
-        preferred_keywords = user_profile.get('preferred_keywords', [])
+        keyword_scores = user_profile.get('keyword_scores', {})
+        # 점수가 4점 이상인 키워드를 사용자의 '선호 키워드'로 간주합니다.
+        preferred_keywords_from_scores = [k for k, v in keyword_scores.items() if v >= 4]
         latest_trends = self.get_latest_trends()
         
-        new_trend_keywords = [t['keyword'] for t in latest_trends if t.get('keyword') and t.get('keyword') not in preferred_keywords]
+        new_trend_keywords = [t['keyword'] for t in latest_trends if t.get('keyword') and t.get('keyword') not in preferred_keywords_from_scores]
         
         if not new_trend_keywords:
             return {'category': '더 이상 새로운 트렌드가 없습니다', 'books': []}

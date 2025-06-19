@@ -28,11 +28,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const firstTopicBtn = document.getElementById('first-topic-btn')
 
+    const trendDateDisplay = document.getElementById('trend-date-display');
+    const prevTrendBtn = document.getElementById('prev-trend-btn');
+    const nextTrendBtn = document.getElementById('next-trend-btn');
+
     // --- 상태 관리 변수 ---
     let currentUserId = null;
     let BrowsePlaylist = [];
     let currentTopicIndex = -1;
     let numPreferred = 0;
+
+    let trendDates = [];
+    let currentTrendIndex = 0;
 
     // --- API 헬퍼 함수 ---
     async function fetchApi(url, options = {}) {
@@ -129,13 +136,39 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (error) { console.error('사용자 목록 로드 실패:', error); }
     }
     
-    async function loadTrends() {
+    function formatTrendDate(dateStr) {
+        if (!dateStr || dateStr.length !== 6) return '';
+        const year = dateStr.substring(0, 2);
+        const month = dateStr.substring(2, 4);
+        const day = dateStr.substring(4, 6);
+        return `(${year}년 ${month}월 ${day}일)`;
+    }
+
+    // 트렌드 탐색 버튼의 활성화/비활성화 상태를 업데이트하는 함수
+    function updateTrendNavButtons() {
+        nextTrendBtn.disabled = currentTrendIndex <= 0;
+        prevTrendBtn.disabled = currentTrendIndex >= trendDates.length - 1;
+    }
+
+    // 특정 날짜의 트렌드 데이터를 불러와 화면에 표시하는 함수
+    async function fetchAndDisplayTrendByDate(dateId) {
+        // 로딩 스피너를 먼저 표시
         trendsList.innerHTML = `<div class="text-center p-5"><div class="spinner-border" role="status"></div></div>`;
+        
+        // 날짜 표시 및 버튼 상태 업데이트
+        trendDateDisplay.textContent = formatTrendDate(dateId);
+        updateTrendNavButtons();
+
         try {
-            const data = await fetchApi(`${API_BASE_URL}/api/trends/latest`);
+            const data = await fetchApi(`${API_BASE_URL}/api/trends/by_date/${dateId}`);
             const trends = data.trends || [];
-            trendsList.innerHTML = '';
-            if (trends.length === 0) { trendsList.textContent = '표시할 트렌드가 없습니다.'; return; }
+            trendsList.innerHTML = ''; // 이전 목록 지우기
+
+            if (trends.length === 0) {
+                trendsList.innerHTML = '<p class="text-center text-muted p-5">표시할 트렌드가 없습니다.</p>';
+                return;
+            }
+
             trends.forEach(trend => {
                 const trendItem = document.createElement('a');
                 trendItem.className = 'list-group-item list-group-item-action flex-column align-items-start';
@@ -148,6 +181,36 @@ document.addEventListener('DOMContentLoaded', () => {
             trendsList.innerHTML = `<div class="alert alert-danger">트렌드 로드 실패: ${error.message}</div>`;
         }
     }
+
+    async function loadTrends() {
+        // 다른 탭에 갔다가 돌아올 때도 화면을 다시 그려주기 위해 if문을 수정합니다.
+        if (trendDates.length === 0) {
+            // 맨 처음 로드할 때만 날짜 목록을 가져옵니다.
+            // 버튼을 미리 비활성화하여 잘못된 클릭을 방지합니다.
+            prevTrendBtn.disabled = true;
+            nextTrendBtn.disabled = true;
+
+            try {
+                const data = await fetchApi(`${API_BASE_URL}/api/trends/dates`);
+                trendDates = data.dates || [];
+
+                if (trendDates.length > 0) {
+                    currentTrendIndex = 0;
+                    // 날짜 목록을 성공적으로 가져온 후, 첫 번째 트렌드를 화면에 표시합니다.
+                    await fetchAndDisplayTrendByDate(trendDates[currentTrendIndex]);
+                } else {
+                    trendsList.innerHTML = '<p class="text-center text-muted p-5">표시할 트렌드가 없습니다.</p>';
+                }
+            } catch (error) {
+                trendsList.innerHTML = `<div class="alert alert-danger">트렌드 날짜 목록 로드 실패: ${error.message}</div>`;
+            }
+        } else {
+            // 이미 날짜 목록이 있다면, 현재 인덱스의 트렌드를 다시 보여주기만 합니다.
+            await fetchAndDisplayTrendByDate(trendDates[currentTrendIndex]);
+        }
+    }
+
+    
     
     // --- 맞춤 추천 핵심 로직 ---
     async function startPersonalizedRecommendations() {
@@ -302,6 +365,21 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (error) {
             alert(`프로필 로드에 실패했습니다: ${error.message}`);
             currentUserId = null; // 실패 시 사용자 선택을 초기화합니다.
+        }
+    });
+
+    // [추가!] 트렌드 탐색 버튼 이벤트 리스너
+    prevTrendBtn.addEventListener('click', () => {
+        if (currentTrendIndex < trendDates.length - 1) {
+            currentTrendIndex++;
+            fetchAndDisplayTrendByDate(trendDates[currentTrendIndex]);
+        }
+    });
+
+    nextTrendBtn.addEventListener('click', () => {
+        if (currentTrendIndex > 0) {
+            currentTrendIndex--;
+            fetchAndDisplayTrendByDate(trendDates[currentTrendIndex]);
         }
     });
 

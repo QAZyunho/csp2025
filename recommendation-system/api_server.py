@@ -84,6 +84,18 @@ def submit_feedback_api():
     recommender.save_feedback(data['user_id'], data['keyword'], data['rating'], data['book_id'])
     return jsonify({'message': 'Feedback received successfully'})
 
+@app.route('/api/trends/dates')
+def get_all_trend_dates_api():
+    if not recommender: return jsonify({'error': 'Recommender not initialized'}), 500
+    dates = recommender.get_all_trend_dates()
+    return jsonify({'dates': dates})
+
+@app.route('/api/trends/by_date/<date_id>')
+def get_trend_by_date_api(date_id):
+    if not recommender: return jsonify({'error': 'Recommender not initialized'}), 500
+    trends = recommender.get_trend_by_date(date_id)
+    return jsonify({'trends': trends})
+
 if __name__ == '__main__':
     print("📚 간소화된 도서 추천 API 서버 시작")
     
