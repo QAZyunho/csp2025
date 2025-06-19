@@ -1,4 +1,6 @@
-# 통합 파이프라인 컨테이너 - 모든 단계를 순차 실행
+# 루트 디렉토리 Dockerfile - 통합 파이프라인 전용
+# 고정 명령어 "docker build --tag cs-project ." 지원
+
 FROM python:3.11-slim
 
 WORKDIR /app
@@ -83,7 +85,7 @@ RUN echo '#!/bin/bash' > /app/run_pipeline.sh && \
     echo '' >> /app/run_pipeline.sh && \
     echo 'DATE=$(date "+%y%m%d")' >> /app/run_pipeline.sh && \
     echo 'log "🚀 통합 파이프라인 시작 (날짜: $DATE)"' >> /app/run_pipeline.sh && \
-    echo 'log "=" ' >> /app/run_pipeline.sh && \
+    echo 'log "=================================================================="' >> /app/run_pipeline.sh && \
     echo '' >> /app/run_pipeline.sh && \
     echo '# 1단계: 키워드 수집' >> /app/run_pipeline.sh && \
     echo 'log "📡 1단계: 트렌드 키워드 수집 시작..."' >> /app/run_pipeline.sh && \
@@ -161,9 +163,9 @@ RUN echo '#!/bin/bash' > /app/run_pipeline.sh && \
 RUN chmod +x /app/run_pipeline.sh
 
 # cron 작업 등록 (환경변수 포함)
-RUN echo "# 매일 한국시간 오후 3시(15:00)에 파이프라인 실행" > /etc/cron.d/daily-pipeline && \
+RUN echo "# 매일 한국시간 새벽 3시(3:00)에 파이프라인 실행" > /etc/cron.d/daily-pipeline && \
     echo "# 환경변수는 실행 시 동적으로 설정됩니다" >> /etc/cron.d/daily-pipeline && \
-    echo "40 12 * * * root cd /app && /app/run_pipeline_with_env.sh >> /var/log/pipeline.log 2>&1" >> /etc/cron.d/daily-pipeline && \
+    echo "0 3 * * * root cd /app && /app/run_pipeline_with_env.sh >> /var/log/pipeline.log 2>&1" >> /etc/cron.d/daily-pipeline && \
     echo "" >> /etc/cron.d/daily-pipeline && \
     chmod 0644 /etc/cron.d/daily-pipeline
 
@@ -193,7 +195,7 @@ RUN echo '#!/bin/bash' > /app/start_service.sh && \
     echo '    log "🚀 즉시 실행 모드"' >> /app/start_service.sh && \
     echo '    exec /app/run_pipeline.sh' >> /app/start_service.sh && \
     echo 'else' >> /app/start_service.sh && \
-    echo '    log "⏰ 스케줄 모드 - 매일 15:00에 실행"' >> /app/start_service.sh && \
+    echo '    log "⏰ 스케줄 모드 - 매일 03:00에 실행"' >> /app/start_service.sh && \
     echo '    log "🕐 현재 시간: $(date)"' >> /app/start_service.sh && \
     echo '    log "🌏 타임존: $TZ"' >> /app/start_service.sh && \
     echo '    ' >> /app/start_service.sh && \
