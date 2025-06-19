@@ -364,7 +364,8 @@ def main():
     """메인 함수"""
     parser = argparse.ArgumentParser(description="Firebase 연동 트렌드 분석기")
     parser.add_argument("--date", "-d", help="분석할 날짜 (YYMMDD 형식, 기본값: 오늘)")
-    parser.add_argument("--gemini_api_key", "-g", default='AIzaSyD1hxIJlbglSksUxRyLZkMZHrWyqFEwpEs',
+    parser.add_argument("--gemini_api_key", "-g", 
+                        default=os.getenv('GEMINI_API_KEY'),  # ✅ 환경변수 사용
                         help="Gemini API 키")
     parser.add_argument("--firebase_config", "-f", 
                         default= os.getenv('FIREBASE_CONFIG_PATH', '/app/csproject2025-cfcb7-firebase-adminsdk-fbsvc-6764c4a1fb.json')
@@ -374,8 +375,8 @@ def main():
     args = parser.parse_args()
     
     # API 키 확인
-    api_key = args.gemini_api_key or os.getenv('GOOGLE_AI_API_KEY')
-    if not api_key:
+    gemini_api_key = args.gemini_api_key or os.getenv('GOOGLE_AI_API_KEY')
+    if not gemini_api_key:
         print("❌ Gemini API 키가 필요합니다.")
         return
     
@@ -385,7 +386,7 @@ def main():
     # 분석기 초기화
     try:
         analyzer = TrendAnalyzerFirebase(
-            gemini_api_key=api_key,
+            gemini_api_key=gemini_api_key,
             firebase_config_path=args.firebase_config
         )
     except Exception as e:

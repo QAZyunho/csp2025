@@ -916,7 +916,12 @@ class CompleteKeywordProcessor:
 
 
 def main():
-    api_key = "AIzaSyD1hxIJlbglSksUxRyLZkMZHrWyqFEwpEs"
+    api_key = os.getenv("GEMINI_API_KEY")  # ✅ 환경변수 사용
+    if not api_key:
+        print("❌ GEMINI_API_KEY 환경변수가 설정되지 않았습니다.")
+        print("💡 다음 명령어로 설정하세요: export GEMINI_API_KEY='your_api_key'")
+        sys.exit(1)
+    
     firebase_config = os.getenv('FIREBASE_CONFIG_PATH', '/app/csproject2025-cfcb7-firebase-adminsdk-fbsvc-6764c4a1fb.json')
     
     """메인 실행 함수"""

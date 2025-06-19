@@ -686,7 +686,8 @@ def main():
                         help="각 키워드당 검색할 도서 수 (기본값: 10)")
     parser.add_argument("--final_books_per_trend", type=int, default=5,
                         help="각 트렌드당 Gemini가 선택할 최종 도서 수 (기본값: 5)")
-    parser.add_argument("--gemini_api_key", "-g", default='AIzaSyD1hxIJlbglSksUxRyLZkMZHrWyqFEwpEs',
+    parser.add_argument("--gemini_api_key", "-g", 
+                        default=os.getenv('GEMINI_API_KEY'),  # ✅ 환경변수 사용
                         help="Gemini API 키 (필수)")
     parser.add_argument("--firebase_config", "-f", 
                         default='/home/yunho/csp2025/csproject2025-cfcb7-firebase-adminsdk-fbsvc-6764c4a1fb.json',

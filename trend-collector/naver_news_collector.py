@@ -358,8 +358,8 @@ def main():
     print("=" * 50)
     
     # 네이버 API 키 설정
-    client_id = "RPUhkWY7UVq81hlMiHNL"
-    client_secret = "u5HUugAYuv"
+    client_id = os.getenv("NAVER_CLIENT_ID")
+    client_secret = os.getenv("NAVER_CLIENT_SECRET")
     
     # 수집기 초기화
     collector = NaverNewsCollectorFirebase(
