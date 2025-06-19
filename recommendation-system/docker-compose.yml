@@ -1,0 +1,22 @@
+
+# 여기에 실행할 서비스(컨테이너)들을 정의합니다.
+services:
+  # 'backend'라는 이름의 백엔드 서비스
+  backend:
+    build:
+      context: . # 현재 폴더를 빌드 컨텍스트로 사용
+      dockerfile: backend.Dockerfile # 이 Dockerfile을 사용해 이미지를 빌드
+    ports:
+      - "5001:5001" # 내 컴퓨터의 5001번 포트를 컨테이너의 5001번 포트와 연결
+    volumes:
+      - .:/app  # 내 컴퓨터의 코드를 컨테이너와 동기화 (코드를 수정하면 바로 반영됨)
+
+  # 'frontend'라는 이름의 프론트엔드 서비스
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend.Dockerfile
+    ports:
+      - "8080:80" # 내 컴퓨터의 8080 포트를 컨테이너의 80번 포트(Nginx 기본 포트)와 연결
+    depends_on:
+      - backend # 백엔드 서비스가 먼저 실행된 후에 프론트엔드 서비스를 실행

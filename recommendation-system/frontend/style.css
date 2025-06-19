@@ -1,0 +1,126 @@
+body {
+    background-color: #f8f9fa;
+    font-family: 'Noto Sans KR', sans-serif;
+}
+
+header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    padding-top: 3rem;
+}
+
+header h1 {
+    margin-top: 2.5rem;
+}
+
+.nav-tabs .nav-link {
+    color: #495057;
+}
+
+.nav-tabs .nav-link.active {
+    color: #495057;
+    background-color: #fff;
+    border-color: #dee2e6 #dee2e6 #fff;
+    font-weight: bold;
+}
+
+.api-status-indicator.connected {
+    background-color: #28a745; /* 초록색 */
+}
+
+.api-status-indicator.disconnected {
+    background-color: #dc3545; /* 빨간색 */
+}
+
+.list-group-item-action {
+    cursor: pointer;
+}
+
+#user-select{
+    max-width: 250px;
+}
+
+.btn-custom {
+    background-image: linear-gradient(to right, #6a11cb 0%, #2575fc 100%);
+    border: none;
+    color: white;
+    border-radius: 0.5rem; /* 둥근 모서리 */
+    font-weight: bold;
+    transition: all 0.2s ease-in-out; /* 부드러운 효과 */
+}
+
+.btn-custom:hover {
+    color: white;
+    opacity: 0.9;
+    transform: translateY(-2px); /* 마우스를 올리면 살짝 위로 움직이는 효과 */
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+.list-group-item {
+    cursor: pointer;
+}
+.list-group-item:hover {
+    background-color: #e9ecef;
+}
+
+.star-rating span {
+    font-size: 2.5rem;
+    cursor: pointer;
+    color: #d3d3d3;
+    transition: color 0.2s;
+}
+
+.star-rating span.selected {
+    color: #ffc107;
+}
+
+.list-group-item h6 {
+    margin-bottom: 0.25rem;
+    line-height: 1.4;
+}
+
+#recs-header {
+    position: relative;
+}
+
+/* 제목이 헤더 영역의 전체 너비를 차지하고, 그 안에서 텍스트를 가운데 정렬합니다. */
+#recs-title {
+    flex-grow: 1; /* 남는 공간을 모두 차지하도록 설정 */
+    text-align: center; /* 차지한 공간 안에서 텍스트를 가운데 정렬 */
+    margin: 0 1rem; /* 양쪽 버튼과의 최소 여백 확보 */
+}
+
+/* 버튼들을 담고 있는 div를 헤더의 오른쪽에 고정시킵니다. */
+#recs-header > div {
+    position: absolute;
+    right: 0;
+}
+
+#myTab {
+    background-color: #e9ecef; /* 전체 배경색을 연한 회색으로 */
+    border-radius: 0.5rem;   /* 모서리를 둥글게 */
+    padding: 0.25rem;        /* 안쪽 여백 */
+}
+
+/* 모든 탭 버튼의 기본 스타일 */
+#myTab .nav-link {
+    color: #495057; /* 기본 글자색 */
+    background-color: transparent; /* 기본 배경은 투명하게 */
+    border-radius: 0.375rem; /* 모서리를 살짝 둥글게 */
+    font-weight: 500; /* 폰트 두께 */
+    transition: background-color 0.2s, color 0.2s; /* 부드러운 색상 전환 효과 */
+}
+
+/* '활성화된' 탭 버튼의 스타일 */
+#myTab .nav-link.active {
+    color: #4f46e5; /* 활성화 시 글자색 */
+    background-color: #ffffff; /* 활성화 시 배경색은 흰색 */
+    font-weight: bold; /* 폰트를 굵게 */
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1); /* 살짝 그림자 효과 */
+}
+
+#user-select-list {
+    width: 100%;
+}
+
+#user-select-list .dropdown-item {
+    text-align: center;
+}
